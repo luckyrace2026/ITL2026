@@ -105,6 +105,20 @@ tr:hover td{background:rgba(0,196,255,.025)}
 .sr-info{flex:1}
 .sr-match{font-size:13px;font-weight:700}
 .sr-detail{font-size:11px;color:var(--mt);margin-top:2px}
+/* 경기 개요 */
+.ov-card{background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:14px 16px;margin-top:10px}
+.ov-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.ov-block{background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:10px 12px}
+.ov-block-ttl{font-size:10px;font-weight:700;color:var(--mt);letter-spacing:.5px;margin-bottom:8px}
+.ov-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:12px}
+.ov-label{color:var(--mt)}
+.ov-val{font-weight:700;color:var(--ac)}
+.ov-mvp{background:rgba(255,215,0,.07);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:10px 12px}
+.ov-mvp-ttl{font-size:10px;font-weight:700;color:var(--gld);letter-spacing:.5px;margin-bottom:6px}
+.ov-mvp-name{font-size:14px;font-weight:700}
+.ov-mvp-score{font-size:12px;color:var(--mt);margin-top:2px}
+.ov-toggle{background:none;border:none;color:var(--mt);font-size:12px;font-family:var(--font);cursor:pointer;padding:4px 8px;border-radius:5px;transition:.15s}
+.ov-toggle:hover{color:var(--tx);background:rgba(255,255,255,.05)}
 
 /* ONBOARDING */
 #ob{position:fixed;inset:0;background:var(--bg);z-index:300;overflow-y:auto;padding:40px 20px}
@@ -378,6 +392,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
           <th class="srt" onclick="sortT('conceded')">실점</th>
           <th class="srt" onclick="sortT('best')">최고기록</th>
           <th class="srt" onclick="sortT('avgTime')">평균기록</th>
+          <th class="srt" onclick="sortT('teamContrib')">팀 기여도</th>
           <th class="srt" onclick="sortT('mistakes')">실수</th>
         </tr></thead>
         <tbody id="t-tbody"></tbody>
@@ -395,7 +410,10 @@ tr:hover td{background:rgba(0,196,255,.025)}
           <th class="srt" onclick="sortP('avgTime')">기록평균</th>
           <th class="srt" onclick="sortP('totalMis')">누적실수</th>
           <th class="srt" onclick="sortP('avgMis')">실수평균</th>
+          <th class="srt" onclick="sortP('totalContrib')">경기기여도</th>
+          <th class="srt" onclick="sortP('avgContrib')">기여도평균</th>
           <th class="srt" onclick="sortP('best')">최고기록</th>
+          <th class="srt" onclick="sortP('mvpCount')">MVP</th>
           <th class="srt" onclick="sortP('winrate')">승률</th>
         </tr></thead>
         <tbody id="p-tbody"></tbody>
@@ -593,6 +611,176 @@ function parseTick(raw){
   const sec=parseInt(s.substring(0,d))||0;
   const tk=parseInt(s.substring(d+1))||0;
   return +(sec+tk*0.05).toFixed(2);
+}
+
+
+// ════════════════════════════════════════════
+// 경기 기여도 & MVP 계산
+// ════════════════════════════════════════════
+
+// 실수 기여도 페널티
+function misPenalty(n){
+  if(n<=0)return 0;
+  // n회 -> -(2n-2)점  (1회->-1, 2회->-2, 3회->-4, 4회->-6, 5회->-8, n->-(2n-2))
+  if(n===1)return -1;
+  return -(2*n-2);
+}
+
+// 한 경기(match)에서 특정 선수(pid)의 기여도 계산
+function calcPlayerContribInMatch(pid, m){
+  if(!m.result)return null;
+  const h=S.teams.find(t=>t.id===m.homeId),a=S.teams.find(t=>t.id===m.awayId);
+  if(!h||!a)return null;
+
+  // 이 매치에서 1~4라운드의 모든 기록 수집 (에이스 결정전 제외)
+  const allTimes=[];
+  for(let ri=0;ri<4;ri++){
+    const rnd=m.result.rounds[ri];
+    if(!rnd||rnd.homeSec===null||rnd.awaySec===null)continue;
+    allTimes.push(rnd.homeSec,rnd.awaySec);
+  }
+  if(!allTimes.length)return null;
+  const minT=Math.min(...allTimes),maxT=Math.max(...allTimes);
+
+  let recordContrib=0,misContrib=0,winContrib=0,aceContrib=0;
+  let participated=false;
+
+  for(let ri=0;ri<4;ri++){
+    const hp=h.players[ri],ap=a.players[ri],rnd=m.result.rounds[ri];
+    if(!rnd||rnd.homeSec===null||rnd.awaySec===null)continue;
+    const isHome=hp?.id===pid,isAway=ap?.id===pid;
+    if(!isHome&&!isAway)continue;
+    participated=true;
+    const mySec=isHome?rnd.homeSec:rnd.awaySec;
+    const myMis=isHome?(rnd.homeMis||0):(rnd.awayMis||0);
+    // 기록 기여도: 가장 빠른 기록=4점, 가장 느린=0.5점 사이 선형 보간
+    const range=maxT-minT;
+    const recScore=range===0?2.25:4-(3.5*(mySec-minT)/range);
+    recordContrib+=+recScore.toFixed(3);
+    // 실수 기여도
+    misContrib+=misPenalty(myMis);
+    // 승리 기여도
+    const rw=roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
+    const won=(isHome&&rw==='home')||(isAway&&rw==='away');
+    const drew=rw==='draw';
+    winContrib+=won?1:(drew?0:-1);
+  }
+  // 에이스 결정전 기여도
+  if(m.result.final){
+    const fn=m.result.final;
+    const hAceNum=fn.homeAce,aAceNum=fn.awayAce;
+    const hAcePl=hAceNum?h.players.find(p=>p.num===hAceNum):null;
+    const aAcePl=aAceNum?a.players.find(p=>p.num===aAceNum):null;
+    const isFinalHome=hAcePl?.id===pid,isFinalAway=aAcePl?.id===pid;
+    if(isFinalHome||isFinalAway){
+      participated=true;
+      const fw=roundWinner(fn.homeSec,fn.awaySec,fn.homeMis,fn.awayMis);
+      const won=(isFinalHome&&fw==='home')||(isFinalAway&&fw==='away');
+      const drew=fw==='draw';
+      aceContrib+=won?2:(drew?0:-2);
+    }
+  }
+  if(!participated)return null;
+  const total=+(recordContrib+misContrib+winContrib+aceContrib).toFixed(2);
+  return{total,recordContrib:+recordContrib.toFixed(2),misContrib,winContrib,aceContrib};
+}
+
+// 한 경기(match)의 MVP 계산: 기여도가 가장 높은 선수
+function calcMatchMVP(m){
+  if(!m.result)return null;
+  const h=S.teams.find(t=>t.id===m.homeId),a=S.teams.find(t=>t.id===m.awayId);
+  if(!h||!a)return null;
+  const allPlayers=[
+    ...h.players.map(p=>({...p,teamName:h.name,teamId:h.id})),
+    ...a.players.map(p=>({...p,teamName:a.name,teamId:a.id}))
+  ];
+  let mvpPlayer=null,mvpScore=-Infinity;
+  for(const p of allPlayers){
+    const res=calcPlayerContribInMatch(p.id,m);
+    if(res===null)continue;
+    if(res.total>mvpScore){mvpScore=res.total;mvpPlayer={...p,score:res.total};}
+  }
+  return mvpPlayer;
+}
+
+// 선수 전체 기여도 통계 계산
+function getPlayerContribStats(pid){
+  const matches=S.matches.filter(m=>m.result);
+  let totalContrib=0,matchCount=0,mvpCount=0;
+  for(const m of matches){
+    const res=calcPlayerContribInMatch(pid,m);
+    if(res===null)continue;
+    totalContrib+=res.total;
+    matchCount++;
+    const mvp=calcMatchMVP(m);
+    if(mvp&&mvp.id===pid)mvpCount++;
+  }
+  const avgContrib=matchCount?+(totalContrib/matchCount).toFixed(2):0;
+  return{totalContrib:+totalContrib.toFixed(2),avgContrib,mvpCount};
+}
+
+// 경기 개요 HTML 생성
+function buildMatchOverview(m){
+  if(!m.result)return '';
+  const h=S.teams.find(t=>t.id===m.homeId),a=S.teams.find(t=>t.id===m.awayId);
+  if(!h||!a)return '';
+  const r=m.result;
+
+  // 팀별 기록 평균 & 실수
+  const hTimes=[],aTimes=[];
+  let hMisTotal=0,aMisTotal=0,roundCount=0;
+  for(const rnd of r.rounds){
+    if(rnd.homeSec===null||rnd.awaySec===null)continue;
+    hTimes.push(rnd.homeSec);aTimes.push(rnd.awaySec);
+    hMisTotal+=rnd.homeMis||0;aMisTotal+=rnd.awayMis||0;
+    roundCount++;
+  }
+  const hAvg=hTimes.length?+(hTimes.reduce((a,b)=>a+b,0)/hTimes.length).toFixed(2):null;
+  const aAvg=aTimes.length?+(aTimes.reduce((a,b)=>a+b,0)/aTimes.length).toFixed(2):null;
+  const hMisAvg=roundCount?+(hMisTotal/roundCount).toFixed(1):0;
+  const aMisAvg=roundCount?+(aMisTotal/roundCount).toFixed(1):0;
+
+  // MVP
+  const mvp=calcMatchMVP(m);
+  const mvpRes=mvp?calcPlayerContribInMatch(mvp.id,m):null;
+
+  // 평균 기록 승자 색상
+  const hAvgCol=hAvg!==null&&aAvg!==null?(hAvg<aAvg?'var(--grn)':hAvg>aAvg?'var(--red)':'var(--mt)'):'var(--mt)';
+  const aAvgCol=hAvg!==null&&aAvg!==null?(aAvg<hAvg?'var(--grn)':aAvg>hAvg?'var(--red)':'var(--mt)'):'var(--mt)';
+
+  return`<div class="ov-card">
+    <div class="ov-grid">
+      <div class="ov-block">
+        <div class="ov-block-ttl">평균 기록 비교</div>
+        <div class="ov-row">
+          <span class="ov-label">${h.name}</span>
+          <span class="ov-val" style="color:${hAvgCol}">${hAvg!==null?fmt(hAvg):'-'}</span>
+        </div>
+        <div class="ov-row">
+          <span class="ov-label">${a.name}</span>
+          <span class="ov-val" style="color:${aAvgCol}">${aAvg!==null?fmt(aAvg):'-'}</span>
+        </div>
+        ${hAvg!==null&&aAvg!==null?`<div style="font-size:10px;color:var(--mt);margin-top:6px;border-top:1px solid var(--bd);padding-top:5px">차이: ${Math.abs(hAvg-aAvg).toFixed(2)}s</div>`:''}
+      </div>
+      <div class="ov-block">
+        <div class="ov-block-ttl">실수 비교 (합계(평균))</div>
+        <div class="ov-row">
+          <span class="ov-label">${h.name}</span>
+          <span class="ov-val" style="color:${hMisTotal<aMisTotal?'var(--grn)':hMisTotal>aMisTotal?'var(--red)':'var(--mt)'}">${hMisTotal}(${hMisAvg})</span>
+        </div>
+        <div class="ov-row">
+          <span class="ov-label">${a.name}</span>
+          <span class="ov-val" style="color:${aMisTotal<hMisTotal?'var(--grn)':aMisTotal>hMisTotal?'var(--red)':'var(--mt)'}">${aMisTotal}(${aMisAvg})</span>
+        </div>
+      </div>
+      <div class="ov-mvp">
+        <div class="ov-mvp-ttl">⭐ 경기 MVP</div>
+        ${mvp?`<div class="ov-mvp-name">${mvp.name} <span style="font-size:11px;color:var(--mt)">${mvp.num}번 · ${mvp.teamName}</span></div>
+        <div class="ov-mvp-score">기여도 ${mvpRes?.total??'-'}점</div>`
+        :'<div style="font-size:12px;color:var(--mt)">데이터 없음</div>'}
+      </div>
+    </div>
+  </div>`;
 }
 
 // 라운드 승패 판정: 시간 동률 시 실수 적은 쪽 승리, 실수도 같으면 무승부
@@ -989,6 +1177,14 @@ function openView(mid){
   document.getElementById('view-modal').classList.add('open');
 }
 
+function toggleOverview(mid){
+  const el=document.getElementById('ov-'+mid);
+  if(!el)return;
+  const btn=el.previousElementSibling?.querySelector('.ov-toggle');
+  if(el.style.display==='none'){el.style.display='block';if(btn)btn.textContent='📊 경기 개요 닫기';}
+  else{el.style.display='none';if(btn)btn.textContent='📊 경기 개요 보기';}
+}
+
 // RECORDS PAGE
 function renderRecords(){
   const q=document.getElementById('rec-search')?.value.toLowerCase()||'';
@@ -1029,12 +1225,19 @@ function renderRecords(){
           <div class="rc-t ${frw==='away'?'w':frw==='home'?'l':''} r">${fmt(r.final.awaySec)}<span style="font-size:10px;color:var(--mt);margin-left:3px">실수${r.final.awayMis}</span></div>
         </div></div>`;
     })():'';
-    return`<div class="rec-card" onclick="openView('${m.id}')">
-      <div class="rc-top">
+    const ovId='ov-'+m.id;
+    return`<div class="rec-card">
+      <div class="rc-top" onclick="openView('${m.id}')" style="cursor:pointer">
         <div><div style="font-size:10px;color:var(--mt);margin-bottom:2px">${m.date||''} ${m.time||''} · 제${m.no}경기 ${m.quarter}쿼터</div><div class="rc-teams">${h} vs ${a}</div></div>
-        <div class="rc-score">${r.hScore} : ${r.aScore}</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="rc-score">${r.hScore} : ${r.aScore}</div>
+        </div>
       </div>
       <div class="rc-rounds">${rHtml}</div>${fHtml}
+      <div style="padding:6px 15px 8px;border-top:1px solid rgba(30,58,95,.3)">
+        <button class="ov-toggle" onclick="toggleOverview('${m.id}')">📊 경기 개요 보기</button>
+      </div>
+      <div id="${ovId}" style="display:none;padding:0 15px 12px">${buildMatchOverview(m)}</div>
     </div>`;
   }).join('');
 }
@@ -1071,7 +1274,17 @@ function getTS(tid){
   }
   const tot=w+l;
   const avgTime=times.length?+(times.reduce((a,b)=>a+b,0)/times.length).toFixed(2):null;
-  return{wins:w,losses:l,winrate:tot?w/tot:0,scored:sc,conceded:cc,best,avgTime,mistakes:mis};
+  // 팀 기여도 = 소속 선수들의 기여도 평균의 합
+  const team=S.teams.find(t=>t.id===tid);
+  let teamContrib=0;
+  if(team){
+    for(const p of team.players){
+      const cs=getPlayerContribStats(p.id);
+      teamContrib+=cs.avgContrib;
+    }
+    teamContrib=+teamContrib.toFixed(2);
+  }
+  return{wins:w,losses:l,winrate:tot?w/tot:0,scored:sc,conceded:cc,best,avgTime,teamContrib,mistakes:mis};
 }
 function rkTeams(rows){
   const s=[...rows].sort((a,b)=>{
@@ -1120,7 +1333,8 @@ function renderTS(){
     // 공동 순위 여부: dispRank가 같은 행이 있으면 T접두어
     const isTied=rows.filter(x=>(x.dispRank||x.rank)===dr).length>1;
     const rkLabel=(isTied?'T':'')+dr;
-    return`<tr><td><span class="rk ${rc}">${rkLabel}</span></td><td style="font-weight:600">${r.name}</td><td class="wc">${r.wins}</td><td class="lc">${r.losses}</td><td>${wr}</td><td style="color:var(--mt)">${gb}</td><td>${r.scored}</td><td>${r.conceded}</td><td class="recc">${r.best!==null?fmt(r.best):'-'}</td><td class="recc">${r.avgTime!==null?fmt(r.avgTime):'-'}</td><td>${r.mistakes}</td></tr>`;
+    const tcol=r.teamContrib>0?'var(--grn)':r.teamContrib<0?'var(--red)':'var(--mt)';
+    return`<tr><td><span class="rk ${rc}">${rkLabel}</span></td><td style="font-weight:600">${r.name}</td><td class="wc">${r.wins}</td><td class="lc">${r.losses}</td><td>${wr}</td><td style="color:var(--mt)">${gb}</td><td>${r.scored}</td><td>${r.conceded}</td><td class="recc">${r.best!==null?fmt(r.best):'-'}</td><td class="recc">${r.avgTime!==null?fmt(r.avgTime):'-'}</td><td style="font-weight:700;color:${tcol}">${r.teamContrib??0}</td><td>${r.mistakes}</td></tr>`;
   }).join('');
 }
 function sortT(col){if(tSortC===col)tSortD=tSortD==='asc'?'desc':'asc';else{tSortC=col;tSortD='desc';}renderTS();}
@@ -1165,7 +1379,9 @@ function getPS(pid){
     }
   }
   const tot=w+l,avg=times.length?times.reduce((a,b)=>a+b,0)/times.length:null;
-  return{wins:w,losses:l,winrate:tot?w/tot:0,avgTime:avg,totalMis:mis,avgMis:tot?mis/tot:0,best};
+  const cs=getPlayerContribStats(pid);
+  return{wins:w,losses:l,winrate:tot?w/tot:0,avgTime:avg,totalMis:mis,avgMis:tot?mis/tot:0,best,
+    totalContrib:cs.totalContrib,avgContrib:cs.avgContrib,mvpCount:cs.mvpCount};
 }
 function renderPS(){
   // allRows는 정렬 기준과 무관하게 항상 승리 수 기준으로 TOP3에 사용
@@ -1175,7 +1391,10 @@ function renderPS(){
   document.getElementById('p-tbody').innerHTML=rows.map(r=>{
     const tot=r.wins+r.losses,wr=tot?(r.winrate*100).toFixed(1)+'%':'-';
     const rkLabelP=r.tied?('T'+r.rank):r.rank;
-    return`<tr><td><span class="rk">${rkLabelP}</span></td><td><span style="font-weight:600;color:var(--ac);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" onclick="openPlayerModal('${r.id}')">${r.name}</span> <span style="font-size:11px;color:var(--mt)">${r.num}번 · ${r.teamName}</span></td><td class="wc">${r.wins}</td><td class="lc">${r.losses}</td><td class="recc">${r.avgTime!==null?fmt(r.avgTime):'-'}</td><td>${r.totalMis}</td><td>${r.avgMis.toFixed(2)}</td><td class="recc">${r.best!==null?fmt(r.best):'-'}</td><td>${wr}</td></tr>`;
+    const pcc=r.totalContrib??0,pacc=r.avgContrib??0;
+    const pcCol=pcc>0?'var(--grn)':pcc<0?'var(--red)':'var(--mt)';
+    const pacCol=pacc>0?'var(--grn)':pacc<0?'var(--red)':'var(--mt)';
+    return`<tr><td><span class="rk">${rkLabelP}</span></td><td><span style="font-weight:600;color:var(--ac);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" onclick="openPlayerModal('${r.id}')">${r.name}</span> <span style="font-size:11px;color:var(--mt)">${r.num}번 · ${r.teamName}</span></td><td class="wc">${r.wins}</td><td class="lc">${r.losses}</td><td class="recc">${r.avgTime!==null?fmt(r.avgTime):'-'}</td><td>${r.totalMis}</td><td>${r.avgMis.toFixed(2)}</td><td style="font-weight:700;color:${pcCol}">${pcc}</td><td style="font-weight:700;color:${pacCol}">${pacc}</td><td class="recc">${r.best!==null?fmt(r.best):'-'}</td><td style="color:var(--gld);font-weight:700">${r.mvpCount??0}</td><td>${wr}</td></tr>`;
   }).join('');
   // TOP3는 항상 전체 데이터(allRows) 기준으로 고정 렌더링
   renderTop3(allRows);
