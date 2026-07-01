@@ -316,6 +316,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
       <button onclick="showPage('standings',this)">순위표</button>
       <button onclick="showPage('admin',this)">팀 관리</button>
       <button onclick="showPage('special',this)">시즌 특수 기록</button>
+      <button onclick="showPage('settings',this)">설정</button>
     </nav>
     <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
       <span id="sync-status" style="font-size:11px;color:var(--mt);white-space:nowrap;display:flex;align-items:center;gap:5px">
@@ -383,7 +384,8 @@ tr:hover td{background:rgba(0,196,255,.025)}
     <div class="tbl-wrap">
       <table id="tt">
         <thead><tr>
-          <th style="width:40px">순위</th><th>팀명</th>
+          <th style="width:40px;cursor:pointer" onclick="sortT('rank')" title="기본 정렬">순위</th>
+          <th>팀명</th>
           <th class="srt" onclick="sortT('wins')">승</th>
           <th class="srt" onclick="sortT('losses')">패</th>
           <th class="srt" onclick="sortT('winrate')">승률</th>
@@ -404,7 +406,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
     <div class="tbl-wrap">
       <table id="pt">
         <thead><tr>
-          <th style="width:40px">순위</th><th>선수명</th>
+          <th style="width:40px;cursor:pointer" onclick="sortP('rank')" title="기본 정렬">순위</th><th>선수명</th>
           <th class="srt srted" onclick="sortP('wins')">승 ↓</th>
           <th class="srt" onclick="sortP('losses')">패</th>
           <th class="srt" onclick="sortP('avgTime')">기록평균</th>
@@ -442,6 +444,20 @@ tr:hover td{background:rgba(0,196,255,.025)}
   <div class="sr-section">
     <div class="sr-section-ttl"><span class="sr-badge sr-badge-dom">압도</span> 압도 경기 <span style="font-size:12px;color:var(--mt);font-weight:400">— 4:0 승리 + 전 라운드 3초 이상 격차</span></div>
     <div id="sr-dominate"></div>
+  </div>
+</div>
+
+<!-- 설정 -->
+<div id="page-settings" class="page">
+  <div class="ph"><div class="ph-ttl">설 <span>정</span></div></div>
+  <div class="card" style="max-width:700px;margin-bottom:16px">
+    <div class="card-hdr">
+      <div class="card-ttl">대진 삭제</div>
+      <div style="font-size:12px;color:var(--mt);margin-top:3px">진행되지 않은 경기(결과 미입력)만 삭제 가능합니다</div>
+    </div>
+    <div class="card-body">
+      <div id="settings-match-list"></div>
+    </div>
   </div>
 </div>
 
@@ -897,6 +913,7 @@ function showPage(n,btn){
   if(n==='standings')renderStandings();
   if(n==='admin')renderAdmin();
   if(n==='special')renderSpecial();
+  if(n==='settings')renderSettings();
 }
 function closeModal(id){document.getElementById(id).classList.remove('open')}
 
@@ -908,10 +925,10 @@ function renderMatchForm(){
   updateMCI();
 }
 function updateMCI(){
-  const c=S.matches.length,q=c<10?1:c<20?2:3;
+  const c=S.matches.length,q=c<=40?1:c<=80?2:3;
   document.getElementById('mc-info').textContent=`총 ${c}경기 / ${q}쿼터 (최대 120경기)`;
 }
-function getQ(no){return no<=10?1:no<=20?2:3}
+function getQ(no){return no<=40?1:no<=80?2:3}
 function addMatch(){
   if(S.matches.length>=120)return alert('최대 120경기까지 등록 가능합니다.');
   const h=document.getElementById('mf-home').value,a=document.getElementById('mf-away').value;
@@ -1337,7 +1354,12 @@ function renderTS(){
     return`<tr><td><span class="rk ${rc}">${rkLabel}</span></td><td style="font-weight:600">${r.name}</td><td class="wc">${r.wins}</td><td class="lc">${r.losses}</td><td>${wr}</td><td style="color:var(--mt)">${gb}</td><td>${r.scored}</td><td>${r.conceded}</td><td class="recc">${r.best!==null?fmt(r.best):'-'}</td><td class="recc">${r.avgTime!==null?fmt(r.avgTime):'-'}</td><td style="font-weight:700;color:${tcol}">${r.teamContrib??0}</td><td>${r.mistakes}</td></tr>`;
   }).join('');
 }
-function sortT(col){if(tSortC===col)tSortD=tSortD==='asc'?'desc':'asc';else{tSortC=col;tSortD='desc';}renderTS();}
+function sortT(col){
+  if(col==='rank'){tSortC='rank';tSortD='asc';}
+  else if(tSortC===col){tSortD=tSortD==='asc'?'desc':'asc';}
+  else{tSortC=col;tSortD='desc';}
+  renderTS();
+}
 
 function getPS(pid){
   let w=0,l=0,times=[],mis=0,best=null;
@@ -1438,7 +1460,12 @@ function renderTop3(allRows){
   }).join('');
 }
 
-function sortP(col){if(pSortC===col)pSortD=pSortD==='asc'?'desc':'asc';else{pSortC=col;pSortD='desc';}renderPS();}
+function sortP(col){
+  if(col==='rank'){pSortC='wins';pSortD='desc';}
+  else if(pSortC===col){pSortD=pSortD==='asc'?'desc':'asc';}
+  else{pSortC=col;pSortD='desc';}
+  renderPS();
+}
 
 // SPECIAL RECORDS
 // ADMIN
@@ -1653,6 +1680,46 @@ function onImportFile(e){
   };
   reader.readAsText(file);
   e.target.value='';
+}
+
+
+// SETTINGS
+function renderSettings(){
+  const el=document.getElementById('settings-match-list');
+  if(!el)return;
+  // 미진행 경기만 표시
+  const pending=S.matches.filter(m=>!m.result);
+  if(!pending.length){
+    el.innerHTML='<div style="color:var(--mt);font-size:13px;padding:8px 0">삭제 가능한 경기가 없습니다. (모든 경기가 완료됐거나 대진이 없음)</div>';
+    return;
+  }
+  el.innerHTML=pending.map(m=>{
+    const h=S.teams.find(t=>t.id===m.homeId)?.name||'?';
+    const a=S.teams.find(t=>t.id===m.awayId)?.name||'?';
+    return`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(30,58,95,.35)">
+      <div style="flex:1">
+        <div style="font-size:11px;color:var(--mt);margin-bottom:2px">${m.quarter}쿼터 · 제${m.no}경기 그룹${m.date?' · '+m.date:''}</div>
+        <div style="font-size:14px;font-weight:600">${h} <span style="color:var(--mt);font-size:12px">vs</span> ${a}</div>
+      </div>
+      <button onclick="deleteMatch('${m.id}')" style="background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.3);border-radius:7px;padding:7px 14px;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.15s" onmouseover="this.style.background='rgba(255,77,109,.22)'" onmouseout="this.style.background='rgba(255,77,109,.12)'">삭제</button>
+    </div>`;
+  }).join('');
+}
+
+function deleteMatch(mid){
+  const m=S.matches.find(x=>x.id===mid);
+  if(!m)return;
+  if(m.result)return alert('이미 완료된 경기는 삭제할 수 없습니다.');
+  const h=S.teams.find(t=>t.id===m.homeId)?.name||'?';
+  const a=S.teams.find(t=>t.id===m.awayId)?.name||'?';
+  if(!confirm(`"${h} vs ${a}" 경기를 삭제할까요?`))return;
+  S.matches=S.matches.filter(x=>x.id!==mid);
+  // 경기 번호(no) 재정렬
+  S.matches.forEach((x,i)=>{x.no=i+1;x.quarter=getQ(i+1);});
+  renderSettings();
+  renderSchedule();
+  updateMCI();
+  saveToCloud();
 }
 
 function renderAdmin(){
