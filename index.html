@@ -396,6 +396,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
           <th class="srt" onclick="sortT('avgTime')">평균기록</th>
           <th class="srt" onclick="sortT('teamContrib')">팀 기여도</th>
           <th class="srt" onclick="sortT('mistakes')">실수</th>
+          <th>연속</th>
         </tr></thead>
         <tbody id="t-tbody"></tbody>
       </table>
@@ -407,7 +408,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
       <table id="pt">
         <thead><tr>
           <th style="width:40px;cursor:pointer" onclick="sortP('rank')" title="기본 정렬">순위</th><th>선수명</th>
-          <th class="srt srted" onclick="sortP('wins')">승 ↓</th>
+          <th class="srt" onclick="sortP('wins')">승</th>
           <th class="srt" onclick="sortP('losses')">패</th>
           <th class="srt" onclick="sortP('avgTime')">기록평균</th>
           <th class="srt" onclick="sortP('totalMis')">누적실수</th>
@@ -1270,7 +1271,10 @@ function switchSt(mode){
   });
   renderStandings();
 }
-function renderStandings(){if(stMode==='team')renderTS();else renderPS()}
+function renderStandings(){
+  if(stMode==='team'){updateSortHeaders('tt',tSortC,tSortD);renderTS();}
+  else{updateSortHeaders('pt',pSortC,pSortD);renderPS();}
+}
 
 function getTS(tid){
   const ms=S.matches.filter(m=>m.result&&(m.homeId===tid||m.awayId===tid));
@@ -1301,7 +1305,27 @@ function getTS(tid){
     }
     teamContrib=+teamContrib.toFixed(2);
   }
-  return{wins:w,losses:l,winrate:tot?w/tot:0,scored:sc,conceded:cc,best,avgTime,teamContrib,mistakes:mis};
+  return{wins:w,losses:l,winrate:tot?w/tot:0,scored:sc,conceded:cc,best,avgTime,teamContrib,mistakes:mis,streak:calcStreak(tid)};
+}
+
+function calcStreak(tid){
+  // 완료된 경기를 경기 번호 순으로 정렬
+  const done=S.matches.filter(m=>m.result&&(m.homeId===tid||m.awayId===tid))
+    .sort((a,b)=>a.no-b.no);
+  if(!done.length)return null;
+  // 가장 최근 경기부터 역순으로 연속 기록 계산
+  let count=0,type=null;
+  for(let i=done.length-1;i>=0;i--){
+    const m=done[i];
+    const isHome=m.homeId===tid;
+    const my=isHome?m.result.hScore:m.result.aScore;
+    const op=isHome?m.result.aScore:m.result.hScore;
+    const won=my>op;
+    if(type===null){type=won?'W':'L';count=1;}
+    else if((type==='W')===won){count++;}
+    else break;
+  }
+  return{type,count};
 }
 function rkTeams(rows){
   const s=[...rows].sort((a,b)=>{
@@ -1351,14 +1375,45 @@ function renderTS(){
     const isTied=rows.filter(x=>(x.dispRank||x.rank)===dr).length>1;
     const rkLabel=(isTied?'T':'')+dr;
     const tcol=r.teamContrib>0?'var(--grn)':r.teamContrib<0?'var(--red)':'var(--mt)';
-    return`<tr><td><span class="rk ${rc}">${rkLabel}</span></td><td style="font-weight:600">${r.name}</td><td class="wc">${r.wins}</td><td class="lc">${r.losses}</td><td>${wr}</td><td style="color:var(--mt)">${gb}</td><td>${r.scored}</td><td>${r.conceded}</td><td class="recc">${r.best!==null?fmt(r.best):'-'}</td><td class="recc">${r.avgTime!==null?fmt(r.avgTime):'-'}</td><td style="font-weight:700;color:${tcol}">${r.teamContrib??0}</td><td>${r.mistakes}</td></tr>`;
+    const sk=r.streak;
+    const skLabel=sk?`${sk.count}${sk.type==='W'?'승':'패'}`:'-';
+    const skCol=sk?(sk.type==='W'?'var(--grn)':'var(--red)'):'var(--mt)';
+    return`<tr><td><span class="rk ${rc}">${rkLabel}</span></td><td style="font-weight:600">${r.name}</td><td class="wc">${r.wins}</td><td class="lc">${r.losses}</td><td>${wr}</td><td style="color:var(--mt)">${gb}</td><td>${r.scored}</td><td>${r.conceded}</td><td class="recc">${r.best!==null?fmt(r.best):'-'}</td><td class="recc">${r.avgTime!==null?fmt(r.avgTime):'-'}</td><td style="font-weight:700;color:${tcol}">${r.teamContrib??0}</td><td>${r.mistakes}</td><td style="font-weight:700;color:${skCol}">${skLabel}</td></tr>`;
   }).join('');
 }
+function updateSortHeaders(tableId, sortCol, sortDir, colMap){
+  const tbl=document.getElementById(tableId);
+  if(!tbl)return;
+  const ths=tbl.querySelectorAll('th[onclick]');
+  ths.forEach(th=>{
+    // onclick에서 컬럼명 추출
+    const match=th.getAttribute('onclick').match(/'([^']+)'/);
+    if(!match)return;
+    const col=match[1];
+    // 기본 텍스트(화살표 제거)
+    th.textContent=th.textContent.replace(/ [↑↓]$/,'');
+    th.style.color='';
+    if(col===sortCol&&sortCol!=='rank'){
+      th.textContent=th.textContent+' '+(sortDir==='asc'?'↑':'↓');
+      th.style.color='var(--ac)';
+    }
+  });
+}
+
 function sortT(col){
   if(col==='rank'){tSortC='rank';tSortD='asc';}
   else if(tSortC===col){tSortD=tSortD==='asc'?'desc':'asc';}
   else{tSortC=col;tSortD='desc';}
+  updateSortHeaders('tt',tSortC,tSortD);
   renderTS();
+}
+
+function sortP(col){
+  if(col==='rank'){pSortC='wins';pSortD='desc';}
+  else if(pSortC===col){pSortD=pSortD==='asc'?'desc':'asc';}
+  else{pSortC=col;pSortD='desc';}
+  updateSortHeaders('pt',pSortC,pSortD);
+  renderPS();
 }
 
 function getPS(pid){
@@ -1405,11 +1460,63 @@ function getPS(pid){
   return{wins:w,losses:l,winrate:tot?w/tot:0,avgTime:avg,totalMis:mis,avgMis:tot?mis/tot:0,best,
     totalContrib:cs.totalContrib,avgContrib:cs.avgContrib,mvpCount:cs.mvpCount};
 }
+function defaultPlayerSort(a,b){
+  // 1. 승리 횟수 많은 순
+  if(b.wins!==a.wins)return b.wins-a.wins;
+  // 2. 경기기여도(totalContrib) 높은 순
+  if((b.totalContrib??0)!==(a.totalContrib??0))return(b.totalContrib??0)-(a.totalContrib??0);
+  // 3. 기록 평균 빠른 순 (null은 뒤로)
+  const aAvg=a.avgTime??Infinity,bAvg=b.avgTime??Infinity;
+  if(aAvg!==bAvg)return aAvg-bAvg;
+  // 4. MVP 횟수 많은 순
+  if((b.mvpCount??0)!==(a.mvpCount??0))return(b.mvpCount??0)-(a.mvpCount??0);
+  // 5. 실수 평균 적은 순
+  if((a.avgMis??0)!==(b.avgMis??0))return(a.avgMis??0)-(b.avgMis??0);
+  return 0;
+}
+function isSameDefaultRank(a,b){
+  return a.wins===b.wins
+    &&(a.totalContrib??0)===(b.totalContrib??0)
+    &&(a.avgTime??null)===(b.avgTime??null)
+    &&(a.mvpCount??0)===(b.mvpCount??0)
+    &&(a.avgMis??0)===(b.avgMis??0);
+}
+
 function renderPS(){
   // allRows는 정렬 기준과 무관하게 항상 승리 수 기준으로 TOP3에 사용
   const allRows=S.teams.filter(t=>t.div===1).flatMap(t=>t.players.map(p=>({...p,teamName:t.name,...getPS(p.id)})));
-  let rows=allRows.slice().sort((a,b)=>{let av=a[pSortC],bv=b[pSortC];if(av===null)av=pSortD==='asc'?Infinity:-Infinity;if(bv===null)bv=pSortD==='asc'?Infinity:-Infinity;if(typeof av==='number')return pSortD==='asc'?av-bv:bv-av;return 0;});
-  let rk=1;for(let i=0;i<rows.length;i++){if(i===0){rows[i].rank=1;rows[i].tied=false;continue;}const same=rows[i][pSortC]===rows[i-1][pSortC];if(!same)rk=i+1;rows[i].rank=rk;rows[i].tied=same;if(same)rows[i-1].tied=true;}
+  let rows;
+  const isDefault=(pSortC==='wins'&&pSortD==='desc');
+  if(isDefault){
+    // 기본 정렬: 5개 기준 우선순위대로
+    rows=allRows.slice().sort(defaultPlayerSort);
+    // 공동 순위: 5개 항목 모두 같아야 동일 순위
+    let rk=1;
+    for(let i=0;i<rows.length;i++){
+      if(i===0){rows[i].rank=1;rows[i].tied=false;continue;}
+      const same=isSameDefaultRank(rows[i],rows[i-1]);
+      if(!same)rk=i+1;
+      rows[i].rank=rk;rows[i].tied=same;
+      if(same)rows[i-1].tied=true;
+    }
+  }else{
+    rows=allRows.slice().sort((a,b)=>{
+      let av=a[pSortC],bv=b[pSortC];
+      if(av===null)av=pSortD==='asc'?Infinity:-Infinity;
+      if(bv===null)bv=pSortD==='asc'?Infinity:-Infinity;
+      if(typeof av==='number')return pSortD==='asc'?av-bv:bv-av;
+      return 0;
+    });
+    // 단일 기준 공동 순위: 해당 컬럼 값이 같으면 동일 순위
+    let rk=1;
+    for(let i=0;i<rows.length;i++){
+      if(i===0){rows[i].rank=1;rows[i].tied=false;continue;}
+      const same=rows[i][pSortC]===rows[i-1][pSortC];
+      if(!same)rk=i+1;
+      rows[i].rank=rk;rows[i].tied=same;
+      if(same)rows[i-1].tied=true;
+    }
+  }
   document.getElementById('p-tbody').innerHTML=rows.map(r=>{
     const tot=r.wins+r.losses,wr=tot?(r.winrate*100).toFixed(1)+'%':'-';
     const rkLabelP=r.tied?('T'+r.rank):r.rank;
@@ -1458,13 +1565,6 @@ function renderTop3(allRows){
       </div>
     </div>`;
   }).join('');
-}
-
-function sortP(col){
-  if(col==='rank'){pSortC='wins';pSortD='desc';}
-  else if(pSortC===col){pSortD=pSortD==='asc'?'desc':'asc';}
-  else{pSortC=col;pSortD='desc';}
-  renderPS();
 }
 
 // SPECIAL RECORDS
