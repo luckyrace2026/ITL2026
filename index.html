@@ -169,7 +169,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
 .sp-p{background:rgba(0,196,255,.08);color:var(--ac)}
 
 /* RECORDS */
-.rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.rec-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 .rec-card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;overflow:hidden;cursor:pointer;transition:.15s}
 .rec-card:hover{border-color:var(--ac);transform:translateY(-2px)}
 .rc-top{background:var(--sf2);padding:12px 15px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--bd)}
@@ -500,7 +500,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
 
 <script>
 const S={teams:[],matches:[],special:{noFault:[],sub20:[],dominate:[]}};
-let curMatch=null,stMode='team',tSortC='rank',tSortD='asc',pSortC='wins',pSortD='desc';
+let curMatch=null,stMode='team',tSortC='rank',tSortD='asc',pSortC='rank',pSortD='desc';
 
 
 // ════════════════════════════════════════════
@@ -663,8 +663,9 @@ function calcPlayerContribInMatch(pid, m){
   let participated=false;
 
   for(let ri=0;ri<4;ri++){
-    const hp=h.players[ri],ap=a.players[ri],rnd=m.result.rounds[ri];
+    const rnd=m.result.rounds[ri];
     if(!rnd||rnd.homeSec===null||rnd.awaySec===null)continue;
+    const hp=getRoundPlayer(h,rnd,'home',ri),ap=getRoundPlayer(a,rnd,'away',ri);
     const isHome=hp?.id===pid,isAway=ap?.id===pid;
     if(!isHome&&!isAway)continue;
     participated=true;
@@ -686,8 +687,8 @@ function calcPlayerContribInMatch(pid, m){
   if(m.result.final){
     const fn=m.result.final;
     const hAceNum=fn.homeAce,aAceNum=fn.awayAce;
-    const hAcePl=hAceNum?h.players.find(p=>p.num===hAceNum):null;
-    const aAcePl=aAceNum?a.players.find(p=>p.num===aAceNum):null;
+    const hAcePl=fn.homeAce?h.players.find(p=>p.id===fn.homeAce||p.num===fn.homeAce):null;
+    const aAcePl=fn.awayAce?a.players.find(p=>p.id===fn.awayAce||p.num===fn.awayAce):null;
     const isFinalHome=hAcePl?.id===pid,isFinalAway=aAcePl?.id===pid;
     if(isFinalHome||isFinalAway){
       participated=true;
@@ -800,6 +801,16 @@ function buildMatchOverview(m){
   </div>`;
 }
 
+
+// 라운드/에이스의 선수 ID 결정:
+// 신규 방식: round.homePlayerId / round.awayPlayerId 저장
+// 구형 데이터 폴백: players[roundIndex] 로 결정
+function getRoundPlayer(team, roundObj, side, roundIdx){
+  if(!team)return null;
+  const pid=roundObj&&roundObj[side+'PlayerId'];
+  if(pid)return team.players.find(p=>p.id===pid)||null;
+  return team.players[roundIdx]||null;
+}
 // 라운드 승패 판정: 시간 동률 시 실수 적은 쪽 승리, 실수도 같으면 무승부
 function roundWinner(hSec,aSec,hMis,aMis){
   if(hSec===null||aSec===null)return null;
@@ -996,12 +1007,24 @@ function openRec(mid){
 }
 function buildRF(m,h,a){
   const rounds=[1,2,3,4].map(i=>{
-    const hp=h?.players[i-1],ap=a?.players[i-1];
+    // 기본값: players[i-1] (기존 방식 호환)
+    const defH=h?.players[i-1],defA=a?.players[i-1];
+    const hOpts=h?.players.map(p=>`<option value="${p.id}"${p.id===defH?.id?' selected':''}>${p.num}번 ${p.name}</option>`).join('')||'';
+    const aOpts=a?.players.map(p=>`<option value="${p.id}"${p.id===defA?.id?' selected':''}>${p.num}번 ${p.name}</option>`).join('')||'';
     return`<div class="rb" id="rb-${i}">
       <div class="rb-hdr">
         <span class="rb-num">R${i}</span>
-        <span class="rb-pl">${hp?.name||'?'} vs ${ap?.name||'?'}</span>
         <span class="rb-wb rwb-t" id="rwb-${i}"></span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <div class="lbl" style="font-size:10px">${h?.name} 출전 선수</div>
+          <select class="sel" id="hpl-${i}" style="width:100%;font-size:12px;padding:6px 8px" onchange="onTI(${i})">${hOpts}</select>
+        </div>
+        <div>
+          <div class="lbl" style="font-size:10px">${a?.name} 출전 선수</div>
+          <select class="sel" id="apl-${i}" style="width:100%;font-size:12px;padding:6px 8px" onchange="onTI(${i})">${aOpts}</select>
+        </div>
       </div>
       <div class="rb-inp">
         <div>
@@ -1078,8 +1101,8 @@ function updLS(){
   if(h===2&&a===2){
     const hPlayers=S.teams.find(t=>t.id===m?.homeId)?.players||[];
     const aPlayers=S.teams.find(t=>t.id===m?.awayId)?.players||[];
-    const hOpts=hPlayers.map(p=>`<option value="${p.num}">${p.num}번 · ${p.name}</option>`).join('');
-    const aOpts=aPlayers.map(p=>`<option value="${p.num}">${p.num}번 · ${p.name}</option>`).join('');
+    const hOpts=hPlayers.map(p=>`<option value="${p.id}">${p.num}번 · ${p.name}</option>`).join('');
+    const aOpts=aPlayers.map(p=>`<option value="${p.id}">${p.num}번 · ${p.name}</option>`).join('');
     // preserve previously selected values if re-rendered
     const prevHP=document.getElementById('hf-ace')?.value||'';
     const prevAP=document.getElementById('af-ace')?.value||'';
@@ -1116,7 +1139,9 @@ function saveRec(){
   for(let i=1;i<=4;i++){
     const hS=parseTick(document.getElementById('h-'+i)?.value),aS=parseTick(document.getElementById('a-'+i)?.value);
     const hM=parseInt(document.getElementById('hm-'+i)?.value||0),aM=parseInt(document.getElementById('am-'+i)?.value||0);
-    rounds.push({homeSec:hS,awaySec:aS,homeMis:hM,awayMis:aM});
+    const hPid=document.getElementById('hpl-'+i)?.value||null;
+    const aPid=document.getElementById('apl-'+i)?.value||null;
+    rounds.push({homeSec:hS,awaySec:aS,homeMis:hM,awayMis:aM,homePlayerId:hPid,awayPlayerId:aPid});
   }
   if(!rounds.some(r=>r.homeSec!==null&&r.awaySec!==null))return alert('최소 1라운드 기록을 입력하세요.');
   let hSc=0,aSc=0;
@@ -1131,7 +1156,7 @@ function saveRec(){
   if(hSc===2&&aSc===2){
     const hFS=parseTick(document.getElementById('hf')?.value),aFS=parseTick(document.getElementById('af')?.value);
     if(hFS===null||aFS===null)return alert('2:2 상황에서는 FINAL 기록을 입력해야 합니다.');
-    final={homeSec:hFS,awaySec:aFS,homeMis:parseInt(document.getElementById('hmf')?.value||0),awayMis:parseInt(document.getElementById('amf')?.value||0),homeAce:parseInt(document.getElementById('hf-ace')?.value||0)||null,awayAce:parseInt(document.getElementById('af-ace')?.value||0)||null};
+    final={homeSec:hFS,awaySec:aFS,homeMis:parseInt(document.getElementById('hmf')?.value||0),awayMis:parseInt(document.getElementById('amf')?.value||0),homeAce:document.getElementById('hf-ace')?.value||null,awayAce:document.getElementById('af-ace')?.value||null};
     {const wf=roundWinner(hFS,aFS,final.homeMis,final.awayMis);if(wf==='home')hSc++;else if(wf==='away')aSc++;}
   }
   const m=S.matches.find(x=>x.id===curMatch);
@@ -1151,7 +1176,7 @@ function openView(mid){
     if(rnd.homeSec===null&&rnd.awaySec===null)return'';
     const rw=roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
     const diff=Math.abs(rnd.homeSec-rnd.awaySec).toFixed(2);
-    const hp=h?.players[i],ap=a?.players[i];
+    const hp=getRoundPlayer(h,rnd,'home',i),ap=getRoundPlayer(a,rnd,'away',i);
     const hCol=rw==='home'?'var(--grn)':rw==='away'?'var(--red)':'var(--mt)';
     const aCol=rw==='away'?'var(--grn)':rw==='home'?'var(--red)':'var(--mt)';
     const winLabel=rw==='home'?`● ${h?.name} 승`:rw==='away'?`● ${a?.name} 승`:'— 무승부';
@@ -1168,8 +1193,8 @@ function openView(mid){
   let fHtml='';
   if(r.final){
     const fw=roundWinner(r.final.homeSec,r.final.awaySec,r.final.homeMis,r.final.awayMis);
-    const hAcePl=r.final.homeAce?h?.players.find(p=>p.num===r.final.homeAce):null;
-    const aAcePl=r.final.awayAce?a?.players.find(p=>p.num===r.final.awayAce):null;
+    const hAcePl=r.final.homeAce?h?.players.find(p=>p.id===r.final.homeAce||p.num===r.final.homeAce):null;
+    const aAcePl=r.final.awayAce?a?.players.find(p=>p.id===r.final.awayAce||p.num===r.final.awayAce):null;
     const hAceLbl=hAcePl?`${hAcePl.num}번 · ${hAcePl.name}`:'에이스';
     const aAceLbl=aAcePl?`${aAcePl.num}번 · ${aAcePl.name}`:'에이스';
     const fWinLabel=fw==='home'?`● ${h?.name} 승`:fw==='away'?`● ${a?.name} 승`:'— 무승부';
@@ -1221,8 +1246,9 @@ function renderRecords(){
     const rHtml=r.rounds.map((rnd,i)=>{
       if(rnd.homeSec===null&&rnd.awaySec===null)return'';
       const rw=roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
-      const hp=S.teams.find(t=>t.id===m.homeId)?.players[i]?.name||'';
-      const ap=S.teams.find(t=>t.id===m.awayId)?.players[i]?.name||'';
+      const _ht=S.teams.find(t=>t.id===m.homeId),_at=S.teams.find(t=>t.id===m.awayId);
+      const hp=getRoundPlayer(_ht,rnd,'home',i)?.name||'';
+      const ap=getRoundPlayer(_at,rnd,'away',i)?.name||'';
       const rwLabel=rw==='home'?h+' 승':rw==='away'?a+' 승':'무승부';
       return`<div class="rc-rl">R${i+1} · ${hp} vs ${ap} · ${rwLabel}</div>
       <div class="rc-rrow">
@@ -1232,8 +1258,8 @@ function renderRecords(){
       </div>`;
     }).join('');
     const fHtml=r.final?(()=>{
-      const hAcePl=r.final.homeAce?S.teams.find(t=>t.id===m.homeId)?.players.find(p=>p.num===r.final.homeAce):null;
-      const aAcePl=r.final.awayAce?S.teams.find(t=>t.id===m.awayId)?.players.find(p=>p.num===r.final.awayAce):null;
+      const hAcePl=r.final.homeAce?S.teams.find(t=>t.id===m.homeId)?.players.find(p=>p.id===r.final.homeAce||p.num===r.final.homeAce):null;
+      const aAcePl=r.final.awayAce?S.teams.find(t=>t.id===m.awayId)?.players.find(p=>p.id===r.final.awayAce||p.num===r.final.awayAce):null;
       const aceLabel=`${hAcePl?hAcePl.num+'번 '+hAcePl.name:'?'} vs ${aAcePl?aAcePl.num+'번 '+aAcePl.name:'?'}`;
       const frw=roundWinner(r.final.homeSec,r.final.awaySec,r.final.homeMis,r.final.awayMis);
       return`<div class="rc-final"><div class="rc-fl">⚡ FINAL · ${aceLabel}</div>
@@ -1409,7 +1435,7 @@ function sortT(col){
 }
 
 function sortP(col){
-  if(col==='rank'){pSortC='wins';pSortD='desc';}
+  if(col==='rank'){pSortC='rank';pSortD='desc';}
   else if(pSortC===col){pSortD=pSortD==='asc'?'desc':'asc';}
   else{pSortC=col;pSortD='desc';}
   updateSortHeaders('pt',pSortC,pSortD);
@@ -1424,7 +1450,8 @@ function getPS(pid){
     if(!h||!a)continue;
     // 1~4라운드
     for(let ri=0;ri<4;ri++){
-      const hp=h.players[ri],ap=a.players[ri],rnd=m.result.rounds[ri];if(!rnd)continue;
+      const rnd=m.result.rounds[ri];if(!rnd)continue;
+      const hp=getRoundPlayer(h,rnd,'home',ri),ap=getRoundPlayer(a,rnd,'away',ri);
       if(hp?.id===pid&&rnd.homeSec!==null&&rnd.awaySec!==null){
         const _rw1=roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);if(_rw1==='home')w++;else if(_rw1==='away')l++;
         times.push(rnd.homeSec);if(best===null||rnd.homeSec<best)best=rnd.homeSec;
@@ -1441,8 +1468,8 @@ function getPS(pid){
       const fn=m.result.final;
       const hAceNum=fn.homeAce,aAceNum=fn.awayAce;
       // 홈팀 에이스 선수 체크
-      const hAcePl=hAceNum?h.players.find(p=>p.num===hAceNum):null;
-      const aAcePl=aAceNum?a.players.find(p=>p.num===aAceNum):null;
+      const hAcePl=fn.homeAce?h.players.find(p=>p.id===fn.homeAce||p.num===fn.homeAce):null;
+      const aAcePl=fn.awayAce?a.players.find(p=>p.id===fn.awayAce||p.num===fn.awayAce):null;
       if(hAcePl?.id===pid&&fn.homeSec!==null&&fn.awaySec!==null){
         const _rw3=roundWinner(fn.homeSec,fn.awaySec,fn.homeMis,fn.awayMis);if(_rw3==='home')w++;else if(_rw3==='away')l++;
         times.push(fn.homeSec);if(best===null||fn.homeSec<best)best=fn.homeSec;
@@ -1461,16 +1488,12 @@ function getPS(pid){
     totalContrib:cs.totalContrib,avgContrib:cs.avgContrib,mvpCount:cs.mvpCount};
 }
 function defaultPlayerSort(a,b){
-  // 1. 승리 횟수 많은 순
+  // 기본 정렬 5개 기준 우선순위
   if(b.wins!==a.wins)return b.wins-a.wins;
-  // 2. 경기기여도(totalContrib) 높은 순
   if((b.totalContrib??0)!==(a.totalContrib??0))return(b.totalContrib??0)-(a.totalContrib??0);
-  // 3. 기록 평균 빠른 순 (null은 뒤로)
   const aAvg=a.avgTime??Infinity,bAvg=b.avgTime??Infinity;
   if(aAvg!==bAvg)return aAvg-bAvg;
-  // 4. MVP 횟수 많은 순
   if((b.mvpCount??0)!==(a.mvpCount??0))return(b.mvpCount??0)-(a.mvpCount??0);
-  // 5. 실수 평균 적은 순
   if((a.avgMis??0)!==(b.avgMis??0))return(a.avgMis??0)-(b.avgMis??0);
   return 0;
 }
@@ -1483,14 +1506,12 @@ function isSameDefaultRank(a,b){
 }
 
 function renderPS(){
-  // allRows는 정렬 기준과 무관하게 항상 승리 수 기준으로 TOP3에 사용
   const allRows=S.teams.filter(t=>t.div===1).flatMap(t=>t.players.map(p=>({...p,teamName:t.name,...getPS(p.id)})));
   let rows;
-  const isDefault=(pSortC==='wins'&&pSortD==='desc');
-  if(isDefault){
-    // 기본 정렬: 5개 기준 우선순위대로
+  const isDefaultSort=(pSortC==='rank');
+  if(isDefaultSort){
+    // 기본 정렬: 5개 기준 우선순위 — 5개 모두 같아야 공동 순위
     rows=allRows.slice().sort(defaultPlayerSort);
-    // 공동 순위: 5개 항목 모두 같아야 동일 순위
     let rk=1;
     for(let i=0;i<rows.length;i++){
       if(i===0){rows[i].rank=1;rows[i].tied=false;continue;}
@@ -1500,6 +1521,7 @@ function renderPS(){
       if(same)rows[i-1].tied=true;
     }
   }else{
+    // 단일 컬럼 정렬: 해당 컬럼 값이 같으면 공동 순위
     rows=allRows.slice().sort((a,b)=>{
       let av=a[pSortC],bv=b[pSortC];
       if(av===null)av=pSortD==='asc'?Infinity:-Infinity;
@@ -1507,7 +1529,6 @@ function renderPS(){
       if(typeof av==='number')return pSortD==='asc'?av-bv:bv-av;
       return 0;
     });
-    // 단일 기준 공동 순위: 해당 컬럼 값이 같으면 동일 순위
     let rk=1;
     for(let i=0;i<rows.length;i++){
       if(i===0){rows[i].rank=1;rows[i].tied=false;continue;}
@@ -1660,7 +1681,8 @@ function openPlayerModal(pid){
     const oppTeam=isHome?a:h;
     let matchRounds=[];
     for(let ri=0;ri<4;ri++){
-      const hp=h.players[ri],ap=a.players[ri],rnd=m.result.rounds[ri];if(!rnd)continue;
+      const rnd=m.result.rounds[ri];if(!rnd)continue;
+      const hp=getRoundPlayer(h,rnd,'home',ri),ap=getRoundPlayer(a,rnd,'away',ri);
       const isMyRound=(isHome&&hp?.id===pid)||(!isHome&&ap?.id===pid);
       if(!isMyRound)continue;
       if(rnd.homeSec===null||rnd.awaySec===null)continue;
@@ -1674,8 +1696,8 @@ function openPlayerModal(pid){
     // 에이스 결정전
     if(m.result.final){
       const fn=m.result.final;
-      const hAcePl=fn.homeAce?h.players.find(p=>p.num===fn.homeAce):null;
-      const aAcePl=fn.awayAce?a.players.find(p=>p.num===fn.awayAce):null;
+      const hAcePl=fn.homeAce?h.players.find(p=>p.id===fn.homeAce||p.num===fn.homeAce):null;
+      const aAcePl=fn.awayAce?a.players.find(p=>p.id===fn.awayAce||p.num===fn.awayAce):null;
       const myFinalHome=hAcePl?.id===pid,myFinalAway=aAcePl?.id===pid;
       if(myFinalHome&&fn.homeSec!==null&&fn.awaySec!==null){
         const _fpmw1=roundWinner(fn.homeSec,fn.awaySec,fn.homeMis,fn.awayMis);
