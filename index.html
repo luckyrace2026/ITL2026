@@ -234,6 +234,23 @@ tr:hover td{background:rgba(0,196,255,.025)}
 .fbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
 .fbar .inp{width:auto;flex:1;min-width:160px}
 .section-lbl{font-size:11px;font-weight:600;color:var(--mt);letter-spacing:.4px;margin-bottom:8px}
+
+/* 순위 기록 */
+.qr-section{margin-bottom:28px}
+.qr-header{display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid var(--bd)}
+.qr-badge{background:rgba(0,196,255,.12);color:var(--ac);font-size:12px;font-weight:700;padding:5px 14px;border-radius:20px;letter-spacing:.5px}
+.qr-sub-badge{background:rgba(255,215,0,.1);color:var(--gld);font-size:11px;font-weight:600;padding:3px 10px;border-radius:12px}
+.qr-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.qr-card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+.qr-card-hdr{background:var(--sf2);padding:11px 16px;border-bottom:1px solid var(--bd);font-size:12px;font-weight:700;color:var(--mt)}
+.qr-card-hdr span{color:var(--tx)}
+.qr-tbl{width:100%;border-collapse:collapse}
+.qr-tbl th{padding:8px 10px;font-size:10px;font-weight:600;color:var(--mt);text-align:center;border-bottom:1px solid var(--bd);background:var(--sf2)}
+.qr-tbl th:first-child,.qr-tbl td:first-child{text-align:left}
+.qr-tbl td{padding:9px 10px;font-size:12px;text-align:center;border-bottom:1px solid rgba(30,58,95,.3)}
+.qr-tbl tr:last-child td{border-bottom:none}
+.qr-tbl tr:hover td{background:rgba(0,196,255,.025)}
+.qr-no-data{padding:24px;text-align:center;color:var(--mt);font-size:13px}
 @media(max-width:640px){
   .mc-games{grid-template-columns:1fr}
   .gr{border-right:none!important}
@@ -317,6 +334,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
       <button onclick="showPage('admin',this)">팀 관리</button>
       <button onclick="showPage('special',this)">시즌 특수 기록</button>
       <button onclick="showPage('postseason',this)">포스트시즌</button>
+      <button onclick="showPage('qrecord',this)">순위 기록</button>
       <button onclick="showPage('settings',this)">설정</button>
     </nav>
     <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
@@ -505,6 +523,13 @@ tr:hover td{background:rgba(0,196,255,.025)}
     <div style="font-size:13px;color:var(--gld);font-weight:700;letter-spacing:2px;margin-bottom:10px">🏆 시즌 우승</div>
     <div id="champion-content"></div>
   </div>
+</div>
+
+
+<!-- 순위 기록 -->
+<div id="page-qrecord" class="page">
+  <div class="ph"><div class="ph-ttl">순위 <span>기록</span></div></div>
+  <div id="qrecord-body"></div>
 </div>
 
 <!-- 설정 -->
@@ -1209,6 +1234,7 @@ function showPage(n,btn){
   if(n==='admin')renderAdmin();
   if(n==='special')renderSpecial();
   if(n==='postseason')renderPostseason();
+  if(n==='qrecord')renderQRecord();
   if(n==='settings')renderSettings();
 }
 function closeModal(id){document.getElementById(id).classList.remove('open')}
@@ -2316,6 +2342,324 @@ function openPSView(seriesKey,gameIdx){
   document.getElementById('vm-body').innerHTML=`<div class="vm-sum"><div><div class="vm-team">${h?.name}</div></div><div><div class="vm-score">${r.hScore} : ${r.aScore}</div></div><div><div class="vm-team">${a?.name}</div></div></div>${rHtml}`;
   document.getElementById('view-modal').classList.add('open');
 }
+
+// ════════════════════════════════════════════
+// 순위 기록 탭
+// ════════════════════════════════════════════
+
+// 특정 매치 번호 범위(minNo~maxNo)의 팀 통계 계산
+function getTSRange(tid, minNo, maxNo){
+  const ms=S.matches.filter(m=>m.result&&(m.homeId===tid||m.awayId===tid)&&m.no>=minNo&&m.no<=maxNo);
+  let w=0,l=0,sc=0,cc=0,best=null,mis=0,times=[];
+  for(const m of ms){
+    const ih=m.homeId===tid;
+    const my=ih?m.result.hScore:m.result.aScore;
+    const op=ih?m.result.aScore:m.result.hScore;
+    if(my>op)w++;else l++;sc+=my;cc+=op;
+    for(const r of m.result.rounds){
+      const t=ih?r.homeSec:r.awaySec;
+      if(t!==null){if(best===null||t<best)best=t;times.push(t);}
+      mis+=ih?(r.homeMis||0):(r.awayMis||0);
+    }
+    if(m.result.final){
+      const t=ih?m.result.final.homeSec:m.result.final.awaySec;
+      if(t!==null){if(best===null||t<best)best=t;times.push(t);}
+      mis+=ih?(m.result.final.homeMis||0):(m.result.final.awayMis||0);
+    }
+  }
+  const tot=w+l;
+  const avgTime=times.length?+(times.reduce((a,b)=>a+b,0)/times.length).toFixed(2):null;
+  // 기여도: 해당 범위 매치에서만 계산
+  let teamContrib=0;
+  const team=S.teams.find(t=>t.id===tid);
+  if(team){
+    for(const p of team.players){
+      const cs=getPlayerContribStatsRange(p.id,minNo,maxNo);
+      teamContrib+=cs.avgContrib;
+    }
+    teamContrib=+teamContrib.toFixed(2);
+  }
+  return{wins:w,losses:l,winrate:tot?w/tot:0,scored:sc,conceded:cc,best,avgTime,teamContrib,mistakes:mis};
+}
+
+// 특정 범위 매치에서 선수 기여도 통계
+function getPlayerContribStatsRange(pid,minNo,maxNo){
+  const matches=S.matches.filter(m=>m.result&&m.no>=minNo&&m.no<=maxNo);
+  let totalContrib=0,matchCount=0;
+  for(const m of matches){
+    const res=calcPlayerContribInMatch(pid,m);
+    if(res===null)continue;
+    totalContrib+=res.total;
+    matchCount++;
+  }
+  const avgContrib=matchCount?+(totalContrib/matchCount).toFixed(2):0;
+  return{totalContrib:+totalContrib.toFixed(2),avgContrib};
+}
+
+// 범위 내 팀 목록 순위 계산 (rkTeams 동일 로직)
+function rankTeamsRange(rows){
+  const s=[...rows].sort((a,b)=>{
+    if(b.winrate!==a.winrate)return b.winrate-a.winrate;
+    if(b.scored!==a.scored)return b.scored-a.scored;
+    if(a.best!==b.best){if(a.best===null)return 1;if(b.best===null)return -1;return a.best-b.best;}
+    return a.mistakes-b.mistakes;
+  });
+  let rk=1;
+  for(let i=0;i<s.length;i++){
+    if(i>0){
+      const p=s[i-1],cur=s[i];
+      const same=p.winrate===cur.winrate&&p.scored===cur.scored&&p.best===cur.best&&p.mistakes===cur.mistakes;
+      if(!same)rk=i+1;
+    }
+    s[i].rank=rk;
+  }
+  return rows.map(r=>({...r,...s.find(x=>x.id===r.id)}));
+}
+
+// 순위 테이블 HTML 생성
+
+// 특정 매치 번호 범위에서 선수 통계 계산
+function getPSRange(pid, minNo, maxNo){
+  let w=0,l=0,times=[],mis=0,best=null;
+  const matches=S.matches.filter(m=>m.result&&m.no>=minNo&&m.no<=maxNo);
+  for(const m of matches){
+    const h=S.teams.find(t=>t.id===m.homeId),a=S.teams.find(t=>t.id===m.awayId);
+    if(!h||!a)continue;
+    for(let ri=0;ri<4;ri++){
+      const rnd=m.result.rounds[ri];if(!rnd)continue;
+      const hp=getRoundPlayer(h,rnd,'home',ri),ap=getRoundPlayer(a,rnd,'away',ri);
+      if(hp?.id===pid&&rnd.homeSec!==null&&rnd.awaySec!==null){
+        const rw=roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
+        if(rw==='home')w++;else if(rw==='away')l++;
+        times.push(rnd.homeSec);if(best===null||rnd.homeSec<best)best=rnd.homeSec;
+        mis+=rnd.homeMis||0;
+      }
+      if(ap?.id===pid&&rnd.homeSec!==null&&rnd.awaySec!==null){
+        const rw=roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
+        if(rw==='away')w++;else if(rw==='home')l++;
+        times.push(rnd.awaySec);if(best===null||rnd.awaySec<best)best=rnd.awaySec;
+        mis+=rnd.awayMis||0;
+      }
+    }
+    if(m.result.final){
+      const fn=m.result.final;
+      const hAcePl=fn.homeAce?h.players.find(p=>p.id===fn.homeAce||p.num===fn.homeAce):null;
+      const aAcePl=fn.awayAce?a.players.find(p=>p.id===fn.awayAce||p.num===fn.awayAce):null;
+      if(hAcePl?.id===pid&&fn.homeSec!==null&&fn.awaySec!==null){
+        const rw=roundWinner(fn.homeSec,fn.awaySec,fn.homeMis,fn.awayMis);
+        if(rw==='home')w++;else if(rw==='away')l++;
+        times.push(fn.homeSec);if(best===null||fn.homeSec<best)best=fn.homeSec;
+        mis+=fn.homeMis||0;
+      }
+      if(aAcePl?.id===pid&&fn.homeSec!==null&&fn.awaySec!==null){
+        const rw=roundWinner(fn.homeSec,fn.awaySec,fn.homeMis,fn.awayMis);
+        if(rw==='away')w++;else if(rw==='home')l++;
+        times.push(fn.awaySec);if(best===null||fn.awaySec<best)best=fn.awaySec;
+        mis+=fn.awayMis||0;
+      }
+    }
+  }
+  const tot=w+l;
+  const avgTime=times.length?+(times.reduce((a,b)=>a+b,0)/times.length).toFixed(2):null;
+  const cs=getPlayerContribStatsRange(pid,minNo,maxNo);
+  return{wins:w,losses:l,winrate:tot?w/tot:0,avgTime,totalMis:mis,avgMis:tot?mis/tot:0,best,
+    totalContrib:cs.totalContrib,avgContrib:cs.avgContrib};
+}
+
+// 범위 내 선수 순위 테이블 HTML (선수 순위표 형식 동일)
+function buildQPlayerTable(teams1, minNo, maxNo){
+  // 범위 내 기본 통계
+  const players=teams1.flatMap(t=>t.players.map(p=>({...p,teamName:t.name,...getPSRange(p.id,minNo,maxNo)})));
+  // 클러치P, MVP는 전체 시즌 기준으로 추가
+  players.forEach(r=>{
+    const full=getPS(r.id);
+    r.clutchPts=full.clutchPts??0;
+    r.mvpCount=full.mvpCount??0;
+  });
+  // 기본 정렬: 승 → 기여도(totalContrib) → 평균기록 → 실수평균
+  const rows=players.slice().sort((a,b)=>{
+    if(b.wins!==a.wins)return b.wins-a.wins;
+    if((b.totalContrib??0)!==(a.totalContrib??0))return(b.totalContrib??0)-(a.totalContrib??0);
+    const aA=a.avgTime??Infinity,bA=b.avgTime??Infinity;
+    if(aA!==bA)return aA-bA;
+    return(a.avgMis??0)-(b.avgMis??0);
+  });
+  const hasData=rows.some(r=>r.wins>0||r.losses>0);
+  if(!hasData)return`<div class="qr-no-data">해당 기간에 완료된 경기가 없습니다</div>`;
+  // 순위 계산
+  let rk=1;
+  for(let i=0;i<rows.length;i++){
+    if(i===0){rows[i].rank=1;rows[i].tied=false;continue;}
+    const a=rows[i],b=rows[i-1];
+    const same=a.wins===b.wins&&(a.totalContrib??0)===(b.totalContrib??0)&&(a.avgTime??null)===(b.avgTime??null)&&(a.avgMis??0)===(b.avgMis??0);
+    if(!same)rk=i+1;
+    rows[i].rank=rk;rows[i].tied=same;if(same)rows[i-1].tied=true;
+  }
+  return`<div style="overflow-x:auto"><table class="qr-tbl" style="min-width:980px">
+    <thead><tr>
+      <th>순위</th><th>선수명</th><th>승</th><th>패</th><th>기록평균</th>
+      <th>누적실수</th><th>실수평균</th><th>경기기여도</th><th>기여도평균</th><th>클러치P</th>
+      <th>최고기록</th><th>MVP</th><th>승률</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map(r=>{
+        const tot=r.wins+r.losses,wr=tot?(r.winrate*100).toFixed(1)+'%':'-';
+        const rkLabel=(r.tied?'T':'')+r.rank;
+        const rc=r.rank===1?'rk1':r.rank===2?'rk2':r.rank===3?'rk3':'';
+        const pcc=r.totalContrib??0,pacc=r.avgContrib??0,cpv=r.clutchPts??0;
+        const pcCol=pcc>0?'var(--grn)':pcc<0?'var(--red)':'var(--mt)';
+        const pacCol=pacc>0?'var(--grn)':pacc<0?'var(--red)':'var(--mt)';
+        const cpCol=cpv>0?'var(--ac)':cpv<0?'var(--red)':'var(--mt)';
+        return`<tr>
+          <td><span class="rk ${rc}">${rkLabel}</span></td>
+          <td><span style="font-weight:600;color:var(--ac);cursor:pointer;text-decoration:underline;text-underline-offset:3px"
+            onclick="openPlayerModal('${r.id}')">${r.name}</span>
+            <span style="font-size:10px;color:var(--mt)">${r.num}번·${r.teamName}</span></td>
+          <td class="wc">${r.wins}</td><td class="lc">${r.losses}</td>
+          <td class="recc">${r.avgTime!==null?fmt(r.avgTime):'-'}</td>
+          <td>${r.totalMis}</td><td>${r.avgMis.toFixed(2)}</td>
+          <td style="font-weight:700;color:${pcCol}">${pcc}</td>
+          <td style="font-weight:700;color:${pacCol}">${pacc}</td>
+          <td style="font-weight:700;color:${cpCol}">${cpv}</td>
+          <td class="recc">${r.best!==null?fmt(r.best):'-'}</td>
+          <td style="color:var(--gld);font-weight:700">${r.mvpCount??0}</td>
+          <td>${wr}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>`;
+}
+function buildQRankTable(teams1, minNo, maxNo){
+  const rows=teams1.map(t=>({...t,...getTSRange(t.id,minNo,maxNo)}));
+  const ranked=rankTeamsRange(rows).sort((a,b)=>a.rank-b.rank);
+  const hasData=ranked.some(r=>r.wins>0||r.losses>0);
+  if(!hasData)return`<div class="qr-no-data">해당 기간에 완료된 경기가 없습니다</div>`;
+  const leader=ranked[0];
+  const lW=leader?.wins||0,lL=leader?.losses||0;
+  return`<div style="overflow-x:auto"><table class="qr-tbl" style="min-width:680px">
+    <thead><tr>
+      <th>순위</th><th>팀명</th><th>승</th><th>패</th><th>승률</th><th>게임차</th>
+      <th>득점</th><th>실점</th><th>최고기록</th><th>평균기록</th><th>팀기여도</th><th>실수</th>
+    </tr></thead>
+    <tbody>
+      ${ranked.map(r=>{
+        const tot=r.wins+r.losses,wr=tot?(r.winrate*100).toFixed(1)+'%':'-';
+        const rc=r.rank===1?'rk1':r.rank===2?'rk2':r.rank===3?'rk3':'';
+        const isTied=ranked.filter(x=>x.rank===r.rank).length>1;
+        const rkLabel=(isTied?'T':'')+r.rank;
+        const tcol=r.teamContrib>0?'var(--grn)':r.teamContrib<0?'var(--red)':'var(--mt)';
+        const gb=r.id===leader?.id?'-':(((lW-r.wins)+(r.losses-lL))/2).toFixed(1);
+        return`<tr>
+          <td><span class="rk ${rc}">${rkLabel}</span></td>
+          <td style="font-weight:600">${r.name}</td>
+          <td class="wc">${r.wins}</td><td class="lc">${r.losses}</td>
+          <td>${wr}</td><td style="color:var(--mt)">${gb}</td>
+          <td>${r.scored}</td><td>${r.conceded}</td>
+          <td class="recc">${r.best!==null?fmt(r.best):'-'}</td>
+          <td class="recc">${r.avgTime!==null?fmt(r.avgTime):'-'}</td>
+          <td style="font-weight:700;color:${tcol}">${r.teamContrib??0}</td>
+          <td>${r.mistakes}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table></div>`;
+}
+
+// 쿼터별 매치 번호 범위
+// 1쿼터: 1~60, 2쿼터: 61~120, 3쿼터: 121~180, 4쿼터: 181~240
+const QUARTER_RANGES={
+  1:{min:1,max:60},
+  2:{min:61,max:120},
+  3:{min:121,max:180},
+  4:{min:181,max:240}
+};
+
+// 내부 탭 상태
+let qrMode='season'; // 'season' | 'quarter'
+let qrQuarter=1;     // 선택된 쿼터 (1~4)
+let qrTeamOrPlayer='team'; // 'team' | 'player'
+
+function renderQRecord(){
+  const con=document.getElementById('qrecord-body');
+  if(!con)return;
+  const teams1=S.teams.filter(t=>t.div===1);
+  if(!teams1.length){con.innerHTML='<div class="empty">등록된 팀이 없습니다.</div>';return;}
+  const completedNos=S.matches.filter(m=>m.result).map(m=>m.no);
+  if(!completedNos.length){con.innerHTML='<div class="empty">완료된 경기가 없습니다.</div>';return;}
+
+  // 완료된 쿼터 목록
+  const activeQs=[1,2,3,4].filter(q=>completedNos.some(no=>no>=QUARTER_RANGES[q].min&&no<=QUARTER_RANGES[q].max));
+  if(!activeQs.includes(qrQuarter)&&activeQs.length)qrQuarter=activeQs[0];
+
+  const modeTabStyle=(active)=>active
+    ?'background:var(--ac);color:#000;border:1px solid var(--ac);'
+    :'background:transparent;color:var(--mt);border:1px solid var(--bd);';
+
+  const subTabStyle=(active)=>active
+    ?'color:var(--ac);border-bottom:2px solid var(--ac);font-weight:700;'
+    :'color:var(--mt);border-bottom:2px solid transparent;font-weight:500;';
+
+  // 상단 탭: 시즌 순위 / 쿼터별 순위
+  let html=`<div style="display:flex;gap:8px;margin-bottom:20px">
+    <button onclick="qrSetMode('season')" style="${modeTabStyle(qrMode==='season')}border-radius:8px;padding:9px 20px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:.15s">시즌 순위</button>
+    <button onclick="qrSetMode('quarter')" style="${modeTabStyle(qrMode==='quarter')}border-radius:8px;padding:9px 20px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:.15s">쿼터별 순위</button>
+  </div>`;
+
+  if(qrMode==='season'){
+    // ── 시즌 순위 모드 ──
+    const maxNo=Math.max(...completedNos);
+    const gameCount=Math.ceil(Math.min(maxNo,240)/4);
+
+    html+=`<div style="display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--bd)">
+      <button onclick="qrSetTP('team')" style="${subTabStyle(qrTeamOrPlayer==='team')}background:none;border:none;cursor:pointer;font-family:var(--font);font-size:13px;padding:10px 20px;transition:.15s">팀 순위</button>
+      <button onclick="qrSetTP('player')" style="${subTabStyle(qrTeamOrPlayer==='player')}background:none;border:none;cursor:pointer;font-family:var(--font);font-size:13px;padding:10px 20px;transition:.15s">선수 순위</button>
+    </div>`;
+
+    html+=`<div class="qr-card">
+      <div class="qr-card-hdr">📊 시즌 누적 순위 <span>1~${activeQs[activeQs.length-1]}쿼터 (${gameCount}경기 진행)</span></div>
+      ${qrTeamOrPlayer==='team'?buildQRankTable(teams1,1,maxNo):buildQPlayerTable(teams1,1,maxNo)}
+    </div>`;
+
+  }else{
+    // ── 쿼터별 순위 모드 ──
+    const qRange=QUARTER_RANGES[qrQuarter];
+    const qCompletedNos=completedNos.filter(no=>no>=qRange.min&&no<=qRange.max);
+    const qGameCount=Math.ceil(qCompletedNos.length/4);
+
+    // 드롭다운
+    html+=`<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--mt);font-weight:600">쿼터 선택</span>
+        <select onchange="qrSetQ(parseInt(this.value))" style="background:var(--sf);border:1px solid var(--bd);color:var(--tx);font-family:var(--font);font-size:13px;padding:7px 12px;border-radius:7px;cursor:pointer;outline:none">
+          ${[1,2,3,4].map(q=>`<option value="${q}"${q===qrQuarter?' selected':''}${!activeQs.includes(q)?' disabled':''}>
+            ${q}쿼터${!activeQs.includes(q)?' (미진행)':''}
+          </option>`).join('')}
+        </select>
+      </div>
+      <div style="font-size:12px;color:var(--mt)">${qGameCount}경기 완료</div>
+    </div>`;
+
+    html+=`<div style="display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--bd)">
+      <button onclick="qrSetTP('team')" style="${subTabStyle(qrTeamOrPlayer==='team')}background:none;border:none;cursor:pointer;font-family:var(--font);font-size:13px;padding:10px 20px;transition:.15s">팀 순위</button>
+      <button onclick="qrSetTP('player')" style="${subTabStyle(qrTeamOrPlayer==='player')}background:none;border:none;cursor:pointer;font-family:var(--font);font-size:13px;padding:10px 20px;transition:.15s">선수 순위</button>
+    </div>`;
+
+    if(!qCompletedNos.length){
+      html+=`<div class="empty">${qrQuarter}쿼터에 완료된 경기가 없습니다.</div>`;
+    }else{
+      html+=`<div class="qr-card">
+        <div class="qr-card-hdr">🏷️ ${qrQuarter}쿼터만의 순위 <span>(${qGameCount}경기 진행)</span></div>
+        ${qrTeamOrPlayer==='team'?buildQRankTable(teams1,qRange.min,qRange.max):buildQPlayerTable(teams1,qRange.min,qRange.max)}
+      </div>`;
+    }
+  }
+
+  con.innerHTML=html;
+}
+
+function qrSetMode(mode){qrMode=mode;renderQRecord();}
+function qrSetQ(q){qrQuarter=q;renderQRecord();}
+function qrSetTP(tp){qrTeamOrPlayer=tp;renderQRecord();}
 function renderAdmin(){
   document.getElementById('admin-list').innerHTML=S.teams.filter(t=>t.div===1).map(t=>`
     <div class="card" style="margin-bottom:13px">
