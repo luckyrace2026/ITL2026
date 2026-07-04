@@ -1417,7 +1417,7 @@ function buildRF(m,h,a){
     ${rounds}
     <div class="final-blk" id="fb">
       <div class="final-ttl">⚡ FINAL (에이스 결정전)</div>
-      <div id="fc"><div class="final-locked">2:2일 때만 입력 가능합니다</div></div>
+      <div id="fc"><div class="final-locked">동점 상황(0:0 · 1:1 · 2:2)일 때만 입력 가능합니다</div></div>
     </div>
     <button class="save-btn" onclick="saveRec()">저장하기</button>`;
 }
@@ -1460,7 +1460,7 @@ function updLS(){
   const fc=document.getElementById('fc');const m=S.matches.find(x=>x.id===curMatch);
   const hn=S.teams.find(t=>t.id===m?.homeId)?.name||'홈',an=S.teams.find(t=>t.id===m?.awayId)?.name||'어웨이';
   if(!fc)return;
-  if(h===2&&a===2){
+  if(h===a&&h+a>=0){  // 동점 상황(0:0, 1:1, 2:2)에서 FINAL 입력 가능
     const hPlayers=S.teams.find(t=>t.id===m?.homeId)?.players||[];
     const aPlayers=S.teams.find(t=>t.id===m?.awayId)?.players||[];
     const hOpts=hPlayers.map(p=>`<option value="${p.id}">${p.num}번 · ${p.name}</option>`).join('');
@@ -1488,7 +1488,7 @@ function updLS(){
     // restore previous selections after DOM update
     if(prevHP)document.getElementById('hf-ace').value=prevHP;
     if(prevAP)document.getElementById('af-ace').value=prevAP;
-  }else{fc.innerHTML=`<div class="final-locked">2:2일 때만 입력 가능합니다 (현재 ${h}:${a})</div>`;}
+  }else{fc.innerHTML=`<div class="final-locked">동점 상황(0:0 · 1:1 · 2:2)일 때만 입력 가능합니다 (현재 ${h}:${a})</div>`;}
 }
 function onFI(){
   const hS=parseTick(document.getElementById('hf')?.value),aS=parseTick(document.getElementById('af')?.value);
@@ -1515,9 +1515,9 @@ function saveRec(){
     }
   }
   let final=null;
-  if(hSc===2&&aSc===2){
+  if(hSc===aSc){  // 동점 상황이면 FINAL
     const hFS=parseTick(document.getElementById('hf')?.value),aFS=parseTick(document.getElementById('af')?.value);
-    if(hFS===null||aFS===null)return alert('2:2 상황에서는 FINAL 기록을 입력해야 합니다.');
+    if(hFS===null||aFS===null)return alert('동점 상황에서는 FINAL 기록을 입력해야 합니다.');
     final={homeSec:hFS,awaySec:aFS,homeMis:parseInt(document.getElementById('hmf')?.value||0),awayMis:parseInt(document.getElementById('amf')?.value||0),homeAce:document.getElementById('hf-ace')?.value||null,awayAce:document.getElementById('af-ace')?.value||null};
     {const wf=roundWinner(hFS,aFS,final.homeMis,final.awayMis);if(wf==='home')hSc++;else if(wf==='away')aSc++;}
   }
@@ -2861,7 +2861,7 @@ function calcTeamSituationStats(tid){
       else if(rw==='away'){if(!isHome)myScore++;else oppScore++;}
     }
 
-    // 에이스결정전: 2:2가 되어 에이스결정전이 진행된 경기에서의 팀 승률
+    // 에이스결정전: 동점(0:0·1:1·2:2)으로 에이스결정전이 진행된 경기에서의 팀 승률
     if(r.final){
       stats.acWin.t++;
       if(teamWon)stats.acWin.w++;
