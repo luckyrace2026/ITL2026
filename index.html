@@ -251,6 +251,30 @@ tr:hover td{background:rgba(0,196,255,.025)}
 .qr-tbl tr:last-child td{border-bottom:none}
 .qr-tbl tr:hover td{background:rgba(0,196,255,.025)}
 .qr-no-data{padding:24px;text-align:center;color:var(--mt);font-size:13px}
+
+/* 시즌 세부 기록 */
+.detail-tab-bar{display:flex;gap:0;margin-bottom:18px;border-bottom:1px solid var(--bd)}
+.detail-tab{background:none;border:none;cursor:pointer;font-family:var(--font);font-size:13px;padding:10px 22px;color:var(--mt);border-bottom:2px solid transparent;transition:.15s;font-weight:500}
+.detail-tab.active{color:var(--ac);border-bottom:2px solid var(--ac);font-weight:700}
+/* 상대 전적 표 */
+.h2h-wrap{overflow-x:auto}
+.h2h-tbl{border-collapse:collapse;width:100%}
+.h2h-tbl th,.h2h-tbl td{border:1px solid var(--bd);padding:10px 12px;text-align:center;font-size:12px;min-width:72px}
+.h2h-tbl th{background:var(--sf2);color:var(--mt);font-weight:700;font-size:11px}
+.h2h-tbl th.h2h-corner{background:var(--sf2)}
+.h2h-tbl th.h2h-rowhead{background:var(--ac);color:#000;font-weight:700}
+.h2h-cell-win{background:rgba(0,229,160,.15);color:var(--grn);font-weight:700}
+.h2h-cell-tie{background:rgba(107,140,174,.12);color:var(--mt);font-weight:600}
+.h2h-cell-loss{background:rgba(255,77,109,.13);color:var(--red);font-weight:700}
+.h2h-cell-self{background:var(--sf2);color:var(--mt)}
+/* 순번별 성적 표 */
+.slot-tbl{border-collapse:collapse;width:100%}
+.slot-tbl th,.slot-tbl td{border:1px solid var(--bd);padding:10px 12px;text-align:center;font-size:12px;min-width:72px}
+.slot-tbl th{background:var(--sf2);color:var(--mt);font-weight:700;font-size:11px}
+.slot-tbl th:first-child{text-align:left}
+.slot-tbl td:first-child{font-weight:700;color:var(--ac);text-align:left}
+.slot-top{background:rgba(0,229,160,.13);color:var(--grn);font-weight:700}
+.slot-bot{background:rgba(255,77,109,.12);color:var(--red);font-weight:700}
 @media(max-width:640px){
   .mc-games{grid-template-columns:1fr}
   .gr{border-right:none!important}
@@ -333,6 +357,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
       <button onclick="showPage('standings',this)">순위표</button>
       <button onclick="showPage('admin',this)">팀 관리</button>
       <button onclick="showPage('special',this)">시즌 특수 기록</button>
+      <button onclick="showPage('detail',this)">시즌 세부 기록</button>
       <button onclick="showPage('postseason',this)">포스트시즌</button>
       <button onclick="showPage('qrecord',this)">순위 기록</button>
       <button onclick="showPage('settings',this)">설정</button>
@@ -459,6 +484,10 @@ tr:hover td{background:rgba(0,196,255,.025)}
     <div id="sr-nofault"></div>
   </div>
   <div class="sr-section">
+    <div class="sr-section-ttl"><span class="sr-badge" style="background:rgba(0,229,160,.15);color:#00ffb3">19초</span> 19세컨드 경기 <span style="font-size:12px;color:var(--mt);font-weight:400">— 1~4라운드 모두 19.95초(19.19틱) 이내 완주</span></div>
+    <div id="sr-sub19"></div>
+  </div>
+  <div class="sr-section">
     <div class="sr-section-ttl"><span class="sr-badge sr-badge-20">20초</span> 20세컨드 경기 <span style="font-size:12px;color:var(--mt);font-weight:400">— 1~4라운드 모두 20.95초(20.19틱) 이내 완주</span></div>
     <div id="sr-sub20"></div>
   </div>
@@ -466,8 +495,24 @@ tr:hover td{background:rgba(0,196,255,.025)}
     <div class="sr-section-ttl"><span class="sr-badge sr-badge-dom">압도</span> 압도 경기 <span style="font-size:12px;color:var(--mt);font-weight:400">— 4:0 승리 + 전 라운드 3초 이상 격차</span></div>
     <div id="sr-dominate"></div>
   </div>
+  <div class="sr-section">
+    <div class="sr-section-ttl"><span class="sr-badge" style="background:rgba(255,215,0,.15);color:var(--gld)">퍼펙트</span> 퍼펙트 경기 <span style="font-size:12px;color:var(--mt);font-weight:400">— 4:0 승리</span></div>
+    <div id="sr-perfect"></div>
+  </div>
 </div>
 
+
+
+<!-- 시즌 세부 기록 -->
+<div id="page-detail" class="page">
+  <div class="ph"><div class="ph-ttl">시즌 <span>세부 기록</span></div></div>
+  <div class="detail-tab-bar">
+    <button class="detail-tab active" onclick="switchDetail('h2h',this)">상대 전적</button>
+    <button class="detail-tab" onclick="switchDetail('slot',this)">순번별 성적</button>
+  </div>
+  <div id="detail-h2h"></div>
+  <div id="detail-slot" style="display:none"></div>
+</div>
 
 <!-- 포스트시즌 -->
 <div id="page-postseason" class="page">
@@ -583,7 +628,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
 </div>
 
 <script>
-const S={teams:[],matches:[],special:{noFault:[],sub20:[],dominate:[]},postseason:{wc:[],po:[],cs:[]}};
+const S={teams:[],matches:[],special:{noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]},postseason:{wc:[],po:[],cs:[]}};
 let curMatch=null,stMode='team',tSortC='rank',tSortD='asc',pSortC='rank',pSortD='desc';
 
 
@@ -621,7 +666,7 @@ async function loadFromCloud(){
       const data=snap.val();
       if(data&&data.teams){
         Object.assign(S,data);
-        if(!S.special)S.special={noFault:[],sub20:[],dominate:[]};
+        if(!S.special)S.special={noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]};
       if(!S.postseason)S.postseason={wc:[],po:[],cs:[]};
         lastSavedSnapshot=JSON.stringify(S);
       }
@@ -671,7 +716,7 @@ async function manualSync(){
     const data=snap.val();
     if(data&&data.teams){
       Object.assign(S,data);
-      if(!S.special)S.special={noFault:[],sub20:[],dominate:[]};
+      if(!S.special)S.special={noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]};
       if(!S.postseason)S.postseason={wc:[],po:[],cs:[]};
       lastSavedSnapshot=JSON.stringify(S);
       refreshCurrentPage();
@@ -696,7 +741,7 @@ async function startPolling(){
     if(json===lastSavedSnapshot)return; // 내가 방금 저장한 변경이므로 무시
     if(data&&data.teams){
       Object.assign(S,data);
-      if(!S.special)S.special={noFault:[],sub20:[],dominate:[]};
+      if(!S.special)S.special={noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]};
       if(!S.postseason)S.postseason={wc:[],po:[],cs:[]};
       lastSavedSnapshot=json;
       refreshCurrentPage();
@@ -1233,6 +1278,7 @@ function showPage(n,btn){
   if(n==='standings')renderStandings();
   if(n==='admin')renderAdmin();
   if(n==='special')renderSpecial();
+  if(n==='detail')renderDetail();
   if(n==='postseason')renderPostseason();
   if(n==='qrecord')renderQRecord();
   if(n==='settings')renderSettings();
@@ -1947,7 +1993,21 @@ function checkSpecialRecords(m){
       S.special.sub20.push({matchId:m.id,teamId:m.awayId,teamName:aTeam?.name,quarter:m.quarter,no:m.no,date:m.date,times:rnds.map(rnd=>rnd.awaySec)});
   }
 
-  // 3. 압도 경기: 4:0 승리 + 모든 라운드 격차 >= 3.00초
+  // 3. 19세컨드 경기: 1~4라운드 모두 19.95초(19.19틱) 이내
+  const LIMIT19=19.95;
+  if(!S.special.sub19)S.special.sub19=[];
+  const hAll19=rnds.every(rnd=>rnd.homeSec<=LIMIT19);
+  const aAll19=rnds.every(rnd=>rnd.awaySec<=LIMIT19);
+  if(hAll19){
+    if(!S.special.sub19.find(x=>x.matchId===m.id&&x.teamId===m.homeId))
+      S.special.sub19.push({matchId:m.id,teamId:m.homeId,teamName:hTeam?.name,quarter:m.quarter,no:m.no,date:m.date,times:rnds.map(rnd=>rnd.homeSec)});
+  }
+  if(aAll19){
+    if(!S.special.sub19.find(x=>x.matchId===m.id&&x.teamId===m.awayId))
+      S.special.sub19.push({matchId:m.id,teamId:m.awayId,teamName:aTeam?.name,quarter:m.quarter,no:m.no,date:m.date,times:rnds.map(rnd=>rnd.awaySec)});
+  }
+
+  // 4. 압도 경기: 4:0 승리 + 모든 라운드 격차 >= 3.00초
   if(r.hScore===4&&r.aScore===0){
     const allDom=rnds.every(rnd=>(rnd.awaySec-rnd.homeSec)>=3.00);
     if(allDom){
@@ -1962,15 +2022,29 @@ function checkSpecialRecords(m){
         S.special.dominate.push({matchId:m.id,teamId:m.awayId,teamName:aTeam?.name,quarter:m.quarter,no:m.no,date:m.date});
     }
   }
+
+  // 5. 퍼펙트 경기: 4:0 승리
+  if(!S.special.perfect)S.special.perfect=[];
+  if(r.hScore===4&&r.aScore===0){
+    if(!S.special.perfect.find(x=>x.matchId===m.id&&x.teamId===m.homeId))
+      S.special.perfect.push({matchId:m.id,teamId:m.homeId,teamName:hTeam?.name,quarter:m.quarter,no:m.no,date:m.date});
+  }
+  if(r.aScore===4&&r.hScore===0){
+    if(!S.special.perfect.find(x=>x.matchId===m.id&&x.teamId===m.awayId))
+      S.special.perfect.push({matchId:m.id,teamId:m.awayId,teamName:aTeam?.name,quarter:m.quarter,no:m.no,date:m.date});
+  }
 }
 
 function renderSpecial(){
   const nfEl=document.getElementById('sr-nofault');
+  const s19El=document.getElementById('sr-sub19');
   const s20El=document.getElementById('sr-sub20');
   const domEl=document.getElementById('sr-dominate');
+  const pfEl=document.getElementById('sr-perfect');
 
   const renderList=(items,el,extraFn)=>{
-    if(!items.length){el.innerHTML=`<div class="sr-empty">아직 기록 없음</div>`;return;}
+    if(!el)return;
+    if(!items||!items.length){el.innerHTML=`<div class="sr-empty">아직 기록 없음</div>`;return;}
     el.innerHTML=items.map((x,i)=>`
       <div class="sr-item">
         <div class="sr-no">시즌 ${i+1}호</div>
@@ -1982,8 +2056,10 @@ function renderSpecial(){
   };
 
   renderList(S.special.noFault,nfEl,null);
+  renderList(S.special.sub19||[],s19El,x=>' · '+x.times.map(t=>fmt(t)).join(', '));
   renderList(S.special.sub20,s20El,x=>' · '+x.times.map(t=>fmt(t)).join(', '));
   renderList(S.special.dominate,domEl,null);
+  renderList(S.special.perfect||[],pfEl,null);
 }
 
 
@@ -2116,7 +2192,7 @@ function onImportFile(e){
       const data=JSON.parse(ev.target.result);
       if(!data.teams||!data.matches)return alert('올바른 데이터 파일이 아닙니다.');
       Object.assign(S,data);
-      if(!S.special)S.special={noFault:[],sub20:[],dominate:[]};
+      if(!S.special)S.special={noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]};
       if(!S.postseason)S.postseason={wc:[],po:[],cs:[]};
       initApp();
       saveToCloud();
@@ -2660,6 +2736,158 @@ function renderQRecord(){
 function qrSetMode(mode){qrMode=mode;renderQRecord();}
 function qrSetQ(q){qrQuarter=q;renderQRecord();}
 function qrSetTP(tp){qrTeamOrPlayer=tp;renderQRecord();}
+
+// ════════════════════════════════════════════
+// 시즌 세부 기록
+// ════════════════════════════════════════════
+let detailMode='h2h'; // 'h2h' | 'slot'
+
+function switchDetail(mode, btn){
+  detailMode=mode;
+  document.querySelectorAll('.detail-tab').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  document.getElementById('detail-h2h').style.display=mode==='h2h'?'':'none';
+  document.getElementById('detail-slot').style.display=mode==='slot'?'':'none';
+  if(mode==='h2h')renderH2H();
+  else renderSlot();
+}
+
+function renderDetail(){
+  document.getElementById('detail-h2h').style.display=detailMode==='h2h'?'':'none';
+  document.getElementById('detail-slot').style.display=detailMode==='slot'?'':'none';
+  if(detailMode==='h2h')renderH2H();
+  else renderSlot();
+}
+
+// 팀 순위 순서대로 정렬된 1군 팀 목록
+function getTeamsRanked(){
+  const teams1=S.teams.filter(t=>t.div===1);
+  let rows=teams1.map(t=>({...t,...getTS(t.id)}));
+  rows=rkTeams(rows).sort((a,b)=>a.rank-b.rank);
+  return rows;
+}
+
+// 상대 전적 계산: teamA가 teamB를 상대로 한 전적 {w, l}
+function getH2H(teamAId, teamBId){
+  const ms=S.matches.filter(m=>m.result&&(
+    (m.homeId===teamAId&&m.awayId===teamBId)||(m.homeId===teamBId&&m.awayId===teamAId)
+  ));
+  let w=0,l=0;
+  for(const m of ms){
+    const isHome=m.homeId===teamAId;
+    const my=isHome?m.result.hScore:m.result.aScore;
+    const op=isHome?m.result.aScore:m.result.hScore;
+    if(my>op)w++;else if(op>my)l++;
+  }
+  return{w,l};
+}
+
+function renderH2H(){
+  const el=document.getElementById('detail-h2h');
+  if(!el)return;
+  const teams=getTeamsRanked();
+  if(!teams.length){el.innerHTML='<div class="empty">팀이 없습니다.</div>';return;}
+
+  const header=`<tr>
+    <th class="h2h-corner"></th>
+    ${teams.map(t=>`<th>${t.name}</th>`).join('')}
+  </tr>`;
+
+  const rows=teams.map(t=>{
+    return`<tr>
+      <th class="h2h-rowhead">${t.name}</th>
+      ${teams.map(opp=>{
+        if(t.id===opp.id)return`<td class="h2h-cell-self">—</td>`;
+        const {w,l}=getH2H(t.id,opp.id);
+        const total=w+l;
+        const wr=total?(w/total):0.5;
+        const cls=total===0?'h2h-cell-tie':wr>0.5?'h2h-cell-win':wr<0.5?'h2h-cell-loss':'h2h-cell-tie';
+        return`<td class="${cls}">${total?`${w}승 ${l}패`:'-'}</td>`;
+      }).join('')}
+    </tr>`;
+  }).join('');
+
+  el.innerHTML=`<div class="h2h-wrap">
+    <table class="h2h-tbl">
+      <thead>${header}</thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="display:flex;gap:12px;margin-top:10px;font-size:11px;color:var(--mt)">
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(0,229,160,.3);border-radius:2px;margin-right:4px"></span>승률 >0.500</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(107,140,174,.2);border-radius:2px;margin-right:4px"></span>승률 =0.500</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(255,77,109,.2);border-radius:2px;margin-right:4px"></span>승률 <0.500</span>
+    </div>
+  </div>`;
+}
+
+// 순번별 성적: 각 팀의 N번 선수의 리그 선수 순위
+function renderSlot(){
+  const el=document.getElementById('detail-slot');
+  if(!el)return;
+  const teams=getTeamsRanked();
+  if(!teams.length){el.innerHTML='<div class="empty">팀이 없습니다.</div>';return;}
+
+  // 전체 선수 기본 정렬 순위 계산
+  const allPlayers=S.teams.filter(t=>t.div===1).flatMap(t=>t.players.map(p=>({...p,teamName:t.name,...getPS(p.id)})));
+  const sorted=allPlayers.slice().sort(defaultPlayerSort);
+  // 순위 부여
+  let rk=1;
+  for(let i=0;i<sorted.length;i++){
+    if(i===0){sorted[i].rank=1;continue;}
+    const same=isSameDefaultRank(sorted[i],sorted[i-1]);
+    if(!same)rk=i+1;
+    sorted[i].rank=rk;
+  }
+  const rankOf=(pid)=>sorted.find(p=>p.id===pid)?.rank??'-';
+
+  // 각 팀의 순번별 순위 수집 → 팀별 top2/bot2 계산
+  // teamRanks[tid] = [rank1, rank2, rank3, rank4]
+  const teamRanks={};
+  for(const t of teams){
+    teamRanks[t.id]=t.players.map(p=>({num:p.num,pid:p.id,rank:rankOf(p.id)}));
+  }
+
+  // 슬롯(순번)별 행 구성
+  const slotCount=4;
+  const rows=Array.from({length:slotCount},(_,si)=>{
+    const slotNum=si+1;
+    // 이 슬롯에서 각 팀의 순위
+    const cellRanks=teams.map(t=>{
+      const entry=teamRanks[t.id].find(e=>e.num===slotNum);
+      return{rank:entry?.rank??'-',pid:entry?.pid};
+    });
+    // 이 슬롯 전체에서 상위 2, 하위 2 계산
+    const numericRanks=cellRanks.map(c=>typeof c.rank==='number'?c.rank:999).filter(r=>r!==999);
+    numericRanks.sort((a,b)=>a-b);
+    const top2Set=new Set(numericRanks.slice(0,2));
+    const bot2Set=new Set(numericRanks.slice(-2).reverse());
+
+    return`<tr>
+      <td>${slotNum}번</td>
+      ${cellRanks.map(c=>{
+        const rk=c.rank;
+        const isTop=typeof rk==='number'&&top2Set.has(rk);
+        const isBot=typeof rk==='number'&&bot2Set.has(rk)&&!isTop;
+        const cls=isTop?'slot-top':isBot?'slot-bot':'';
+        return`<td class="${cls}">${typeof rk==='number'?rk+'위':'-'}</td>`;
+      }).join('')}
+    </tr>`;
+  }).join('');
+
+  el.innerHTML=`<div style="overflow-x:auto">
+    <table class="slot-tbl">
+      <thead><tr>
+        <th>순번</th>
+        ${teams.map(t=>`<th>${t.name}</th>`).join('')}
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div style="display:flex;gap:12px;margin-top:10px;font-size:11px;color:var(--mt)">
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(0,229,160,.3);border-radius:2px;margin-right:4px"></span>해당 순번 내 상위 2명</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(255,77,109,.2);border-radius:2px;margin-right:4px"></span>해당 순번 내 하위 2명</span>
+    </div>
+  </div>`;
+}
 function renderAdmin(){
   document.getElementById('admin-list').innerHTML=S.teams.filter(t=>t.div===1).map(t=>`
     <div class="card" style="margin-bottom:13px">
