@@ -705,7 +705,7 @@ function refreshCurrentPage(){
   else if(id==='page-records')renderRecords();
   else if(id==='page-standings')renderStandings();
   else if(id==='page-admin')renderAdmin();
-  else if(id==='page-special')renderSpecial();
+  else if(id==='page-special'){rescanAllSpecial();renderSpecial();}
 }
 
 async function manualSync(){
@@ -1222,7 +1222,7 @@ function obVal(){
 function obNext(){
   S.teams=Array.from({length:8},(_,i)=>{
     const name=document.getElementById('obt-'+i).value.trim();
-    return{id:'t'+(i+1),name,div:1,players:[1,2,3,4].map(n=>({id:'t'+(i+1)+'p'+n,name:'',num:n}))};
+    return{id:'t'+(i+1),name,div:1,order:[1,2,3,4],players:[1,2,3,4].map(n=>({id:'t'+(i+1)+'p'+n,name:'',num:n}))};
   });
   document.getElementById('obs-0').classList.remove('on');
   document.getElementById('obs-1').classList.add('on');
@@ -1277,7 +1277,7 @@ function showPage(n,btn){
   if(n==='records')renderRecords();
   if(n==='standings')renderStandings();
   if(n==='admin')renderAdmin();
-  if(n==='special')renderSpecial();
+  if(n==='special'){rescanAllSpecial();renderSpecial();}
   if(n==='detail')renderDetail();
   if(n==='postseason')renderPostseason();
   if(n==='qrecord')renderQRecord();
@@ -1364,8 +1364,11 @@ function openRec(mid){
 }
 function buildRF(m,h,a){
   const rounds=[1,2,3,4].map(i=>{
-    // 기본값: players[i-1] (기존 방식 호환)
-    const defH=h?.players[i-1],defA=a?.players[i-1];
+    // 기본값: team.order[i-1]번 선수 (없으면 players[i-1] 폴백)
+    const hOrder=h?.order||[1,2,3,4];
+    const aOrder=a?.order||[1,2,3,4];
+    const defH=h?.players.find(p=>p.num===hOrder[i-1])||h?.players[i-1];
+    const defA=a?.players.find(p=>p.num===aOrder[i-1])||a?.players[i-1];
     const hOpts=h?.players.map(p=>`<option value="${p.id}"${p.id===defH?.id?' selected':''}>${p.num}번 ${p.name}</option>`).join('')||'';
     const aOpts=a?.players.map(p=>`<option value="${p.id}"${p.id===defA?.id?' selected':''}>${p.num}번 ${p.name}</option>`).join('')||'';
     return`<div class="rb" id="rb-${i}">
@@ -2032,6 +2035,14 @@ function checkSpecialRecords(m){
   if(r.aScore===4&&r.hScore===0){
     if(!S.special.perfect.find(x=>x.matchId===m.id&&x.teamId===m.awayId))
       S.special.perfect.push({matchId:m.id,teamId:m.awayId,teamName:aTeam?.name,quarter:m.quarter,no:m.no,date:m.date});
+  }
+}
+
+function rescanAllSpecial(){
+  // 전체 경기를 다시 스캔하여 특수 기록을 재구성
+  S.special={noFault:[],sub19:[],sub20:[],dominate:[],perfect:[]};
+  for(const m of S.matches){
+    if(m.result)checkSpecialRecords(m);
   }
 }
 
@@ -2889,9 +2900,11 @@ function renderSlot(){
   </div>`;
 }
 function renderAdmin(){
-  document.getElementById('admin-list').innerHTML=S.teams.filter(t=>t.div===1).map(t=>`
-    <div class="card" style="margin-bottom:13px">
-      <div class="card-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+  document.getElementById('admin-list').innerHTML=S.teams.filter(t=>t.div===1).map(t=>{
+    const order=t.order||[1,2,3,4];
+    const numOpts=(sel)=>t.players.map(p=>`<option value="${p.num}"${p.num===sel?' selected':''}>${p.num}번 ${p.name}</option>`).join('');
+    return`<div class="card" style="margin-bottom:13px">
+      <div class="card-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <div class="card-ttl">${t.name}</div>
         <div style="display:flex;gap:8px;align-items:center">
           <span style="font-size:12px;color:var(--mt)">팀명 변경</span>
@@ -2899,7 +2912,20 @@ function renderAdmin(){
         </div>
       </div>
       <div class="card-body">
-        <div class="section-lbl">선수 목록</div>
+        <div class="section-lbl" style="margin-bottom:10px">선발 출전 순서</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+          ${[0,1,2,3].map(ri=>`
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:11px;color:var(--mt);font-weight:600">R${ri+1}</span>
+              <select class="sel" style="font-size:12px;padding:6px 10px"
+                onchange="setOrder('${t.id}',${ri},parseInt(this.value))">
+                ${numOpts(order[ri])}
+              </select>
+              ${ri<3?`<span style="color:var(--bd);font-size:16px">—</span>`:''}
+            </div>`).join('')}
+          <span style="font-size:11px;color:var(--mt);margin-left:4px">순으로 출전</span>
+        </div>
+        <div class="section-lbl">선수 목록 및 이름 변경</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:9px">
           ${t.players.map(p=>`<div style="display:flex;align-items:center;gap:8px">
             <span style="font-size:12px;color:var(--mt);font-weight:600;min-width:28px">${p.num}번</span>
@@ -2907,10 +2933,18 @@ function renderAdmin(){
           </div>`).join('')}
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 function renameTm(tid,v){const t=S.teams.find(x=>x.id===tid);if(t&&v.trim()){t.name=v.trim();saveToCloud();renderMatchForm();}}
 function renamePl(tid,pid,v){const t=S.teams.find(x=>x.id===tid);if(!t)return;const p=t.players.find(x=>x.id===pid);if(p&&v.trim()){p.name=v.trim();saveToCloud();}}
+function setOrder(tid,roundIdx,num){
+  const t=S.teams.find(x=>x.id===tid);if(!t)return;
+  if(!t.order)t.order=[1,2,3,4];
+  t.order[roundIdx]=num;
+  saveToCloud();
+  // 드롭다운 UI는 이미 변경됐으므로 전체 재렌더 불필요
+}
 
 initOB();
 </script>
