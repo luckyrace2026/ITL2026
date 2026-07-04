@@ -509,9 +509,11 @@ tr:hover td{background:rgba(0,196,255,.025)}
   <div class="detail-tab-bar">
     <button class="detail-tab active" onclick="switchDetail('h2h',this)">상대 전적</button>
     <button class="detail-tab" onclick="switchDetail('slot',this)">순번별 성적</button>
+    <button class="detail-tab" onclick="switchDetail('situation',this)">상황별 팀 승률</button>
   </div>
   <div id="detail-h2h"></div>
   <div id="detail-slot" style="display:none"></div>
+  <div id="detail-situation" style="display:none"></div>
 </div>
 
 <!-- 포스트시즌 -->
@@ -2757,17 +2759,23 @@ function switchDetail(mode, btn){
   detailMode=mode;
   document.querySelectorAll('.detail-tab').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
-  document.getElementById('detail-h2h').style.display=mode==='h2h'?'':'none';
-  document.getElementById('detail-slot').style.display=mode==='slot'?'':'none';
+  ['h2h','slot','situation'].forEach(id=>{
+    const el=document.getElementById('detail-'+id);
+    if(el)el.style.display=mode===id?'':'none';
+  });
   if(mode==='h2h')renderH2H();
-  else renderSlot();
+  else if(mode==='slot')renderSlot();
+  else renderSituation();
 }
 
 function renderDetail(){
-  document.getElementById('detail-h2h').style.display=detailMode==='h2h'?'':'none';
-  document.getElementById('detail-slot').style.display=detailMode==='slot'?'':'none';
+  ['h2h','slot','situation'].forEach(id=>{
+    const el=document.getElementById('detail-'+id);
+    if(el)el.style.display=detailMode===id?'':'none';
+  });
   if(detailMode==='h2h')renderH2H();
-  else renderSlot();
+  else if(detailMode==='slot')renderSlot();
+  else renderSituation();
 }
 
 // 팀 순위 순서대로 정렬된 1군 팀 목록
@@ -2791,6 +2799,149 @@ function getH2H(teamAId, teamBId){
     if(my>op)w++;else if(op>my)l++;
   }
   return{w,l};
+}
+
+
+// 상황별 팀 승률 계산
+function calcTeamSituationStats(tid){
+  const ms=S.matches.filter(m=>m.result&&(m.homeId===tid||m.awayId===tid));
+  // 결과 구조
+  const stats={
+    roundWin:[{w:0,t:0},{w:0,t:0},{w:0,t:0},{w:0,t:0}],   // 1~4라운드 승리 후 팀 최종 승률
+    roundLoss:[{w:0,t:0},{w:0,t:0},{w:0,t:0},{w:0,t:0}],  // 1~4라운드 패배 후 팀 최종 승률
+    acWin:{w:0,t:0},      // 에이스결정전 승리팀의 팀 최종 승률
+    lead20:{w:0,t:0},     // 2:0 리드 후 팀 최종 승률
+    lead10:{w:0,t:0},     // 1:0 리드 후 팀 최종 승률
+    tie11:{w:0,t:0},      // 1:1 동점 후 팀 최종 승률
+  };
+
+  for(const m of ms){
+    const r=m.result;
+    const isHome=m.homeId===tid;
+    const teamWon=isHome?r.hScore>r.aScore:r.aScore>r.hScore;
+    const myFinal=isHome?r.hScore:r.aScore;
+    const oppFinal=isHome?r.aScore:r.hScore;
+
+    // 라운드별 분석
+    let myScore=0,oppScore=0;
+    for(let ri=0;ri<4;ri++){
+      const rnd=r.rounds[ri];
+      if(!rnd||rnd.homeSec===null||rnd.awaySec===null)continue;
+      const rw=roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
+      const iWon=(isHome&&rw==='home')||(!isHome&&rw==='away');
+
+      // 라운드 결과에 따른 상황별 기록
+      if(iWon){
+        stats.roundWin[ri].t++;
+        if(teamWon)stats.roundWin[ri].w++;
+      }else if(rw!=='draw'){
+        stats.roundLoss[ri].t++;
+        if(teamWon)stats.roundLoss[ri].w++;
+      }
+
+      // 이번 라운드 점수 반영 전 상황 체크
+      // 1:0 리드: 내가 먼저 1점 앞서고 있는 상황에서 라운드가 시작될 때
+      if(myScore===1&&oppScore===0){
+        stats.lead10.t++;
+        if(teamWon)stats.lead10.w++;
+      }
+      // 2:0 리드
+      if(myScore===2&&oppScore===0){
+        stats.lead20.t++;
+        if(teamWon)stats.lead20.w++;
+      }
+      // 1:1 동점
+      if(myScore===1&&oppScore===1){
+        stats.tie11.t++;
+        if(teamWon)stats.tie11.w++;
+      }
+
+      // 점수 업데이트
+      if(rw==='home'){if(isHome)myScore++;else oppScore++;}
+      else if(rw==='away'){if(!isHome)myScore++;else oppScore++;}
+    }
+
+    // 에이스결정전: 2:2가 되어 에이스결정전이 진행된 경기에서의 팀 승률
+    if(r.final){
+      stats.acWin.t++;
+      if(teamWon)stats.acWin.w++;
+    }
+  }
+  return stats;
+}
+
+function fmtWR(w,t){
+  if(!t)return'-';
+  return `${(w/t*100).toFixed(1)}% <span style="font-size:10px;color:var(--mt)">(${w}/${t})</span>`;
+}
+
+function renderSituation(){
+  const el=document.getElementById('detail-situation');
+  if(!el)return;
+  const teams=getTeamsRanked();
+  if(!teams.length){el.innerHTML='<div class="empty">팀이 없습니다.</div>';return;}
+
+  // 행 레이블 정의
+  const rowLabels=[
+    {key:'r1w',label:'1라운드 승리 시 팀 승률'},
+    {key:'r2w',label:'2라운드 승리 시 팀 승률'},
+    {key:'r3w',label:'3라운드 승리 시 팀 승률'},
+    {key:'r4w',label:'4라운드 승리 시 팀 승률'},
+    {key:'r1l',label:'1라운드 패배 시 팀 승률'},
+    {key:'r2l',label:'2라운드 패배 시 팀 승률'},
+    {key:'r3l',label:'3라운드 패배 시 팀 승률'},
+    {key:'r4l',label:'4라운드 패배 시 팀 승률'},
+    {key:'ace',label:'에이스 결정전 팀 승률'},
+    {key:'l20',label:'2:0 리드 시 팀 승률'},
+    {key:'l10',label:'1:0 리드 시 팀 승률'},
+    {key:'t11',label:'1:1 동점 시 팀 승률'},
+  ];
+
+  // 팀별 통계 계산
+  const teamStats=teams.map(t=>({...t,stat:calcTeamSituationStats(t.id)}));
+
+  // 항목별 값 추출 함수
+  function getVal(stat,key){
+    if(key==='r1w')return stat.roundWin[0];
+    if(key==='r2w')return stat.roundWin[1];
+    if(key==='r3w')return stat.roundWin[2];
+    if(key==='r4w')return stat.roundWin[3];
+    if(key==='r1l')return stat.roundLoss[0];
+    if(key==='r2l')return stat.roundLoss[1];
+    if(key==='r3l')return stat.roundLoss[2];
+    if(key==='r4l')return stat.roundLoss[3];
+    if(key==='ace')return stat.acWin;
+    if(key==='l20')return stat.lead20;
+    if(key==='l10')return stat.lead10;
+    if(key==='t11')return stat.tie11;
+    return{w:0,t:0};
+  }
+
+  const sepAfter=new Set(['r4w','r4l']); // 구분선 위치
+
+  const bodyRows=rowLabels.map(({key,label})=>{
+    const cells=teamStats.map(ts=>{
+      const{w,t}=getVal(ts.stat,key);
+      const wr=t?w/t:-1;
+      const col=wr<0?'var(--mt)':wr>0.5?'var(--grn)':wr<0.5?'var(--red)':'var(--mt)';
+      return`<td style="font-weight:600;color:${col}">${fmtWR(w,t)}</td>`;
+    }).join('');
+    const borderStyle=sepAfter.has(key)?'border-bottom:2px solid var(--bd)':'';
+    return`<tr style="${borderStyle}"><td style="font-weight:600;font-size:12px;color:var(--tx);white-space:nowrap">${label}</td>${cells}</tr>`;
+  }).join('');
+
+  el.innerHTML=`<div style="overflow-x:auto">
+    <table class="slot-tbl" style="min-width:600px">
+      <thead><tr>
+        <th style="min-width:200px;text-align:left">항목</th>
+        ${teams.map(t=>`<th>${t.name}</th>`).join('')}
+      </tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table>
+    <div style="font-size:11px;color:var(--mt);margin-top:10px">
+      ※ 색상: <span style="color:var(--grn)">초록 &gt;50%</span> · <span style="color:var(--red)">빨강 &lt;50%</span> · 회색 50% 또는 데이터 없음
+    </div>
+  </div>`;
 }
 
 function renderH2H(){
