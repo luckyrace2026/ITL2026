@@ -536,11 +536,13 @@ tr:hover td{background:rgba(0,196,255,.025)}
     <button class="detail-tab" onclick="switchDetail('slot',this)">순번별 성적</button>
     <button class="detail-tab" onclick="switchDetail('situation',this)">상황별 팀 승률</button>
     <button class="detail-tab" onclick="switchDetail('pvp',this)">선수별 맞대결 전적</button>
+    <button class="detail-tab" onclick="switchDetail('graph',this)">순위 그래프</button>
   </div>
   <div id="detail-h2h"></div>
   <div id="detail-slot" style="display:none"></div>
   <div id="detail-situation" style="display:none"></div>
   <div id="detail-pvp" style="display:none"></div>
+  <div id="detail-graph" style="display:none"></div>
 </div>
 
 <!-- 포스트시즌 -->
@@ -2944,25 +2946,27 @@ function switchDetail(mode, btn){
   detailMode=mode;
   document.querySelectorAll('.detail-tab').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
-  ['h2h','slot','situation','pvp'].forEach(id=>{
+  ['h2h','slot','situation','pvp','graph'].forEach(id=>{
     const el=document.getElementById('detail-'+id);
     if(el)el.style.display=mode===id?'':'none';
   });
   if(mode==='h2h')renderH2H();
   else if(mode==='slot')renderSlot();
   else if(mode==='situation')renderSituation();
-  else renderPVP();
+  else if(mode==='pvp')renderPVP();
+  else renderRankGraph();
 }
 
 function renderDetail(){
-  ['h2h','slot','situation','pvp'].forEach(id=>{
+  ['h2h','slot','situation','pvp','graph'].forEach(id=>{
     const el=document.getElementById('detail-'+id);
     if(el)el.style.display=detailMode===id?'':'none';
   });
   if(detailMode==='h2h')renderH2H();
   else if(detailMode==='slot')renderSlot();
   else if(detailMode==='situation')renderSituation();
-  else renderPVP();
+  else if(detailMode==='pvp')renderPVP();
+  else renderRankGraph();
 }
 
 // 팀 순위 순서대로 정렬된 1군 팀 목록
@@ -3275,6 +3279,186 @@ function renderPVP(){
       </table>
     </div>`}`;
 }
+
+
+// ════════════════════════════════════════════
+// 순위 그래프 (팀별 제n경기 종료 후 순위)
+// ════════════════════════════════════════════
+var _graphQuarter='season'; // 'season'|'1'|'2'|'3'|'4'
+var _graphSelTeams=null;
+
+const GRAPH_Q_RANGES={
+  season:{min:1,max:60},
+  '1':{min:1,max:15},
+  '2':{min:16,max:30},
+  '3':{min:31,max:45},
+  '4':{min:46,max:60}
+};
+
+function renderRankGraph(){
+  const el=document.getElementById('detail-graph');
+  if(!el)return;
+  const teams1=S.teams.filter(t=>t.div===1);
+  if(!teams1.length){el.innerHTML='<div class="empty">팀이 없습니다.</div>';return;}
+
+  const qRange=GRAPH_Q_RANGES[_graphQuarter]||GRAPH_Q_RANGES.season;
+
+  // 완료된 제n경기 번호 (해당 쿼터 범위 내)
+  const doneNos=S.matches.filter(m=>m.result).map(m=>m.no);
+  const gameNos=[...new Set(
+    doneNos.filter(no=>{const gNo=Math.ceil(no/4);return gNo>=qRange.min&&gNo<=qRange.max;})
+           .map(no=>Math.ceil(no/4))
+  )].sort((a,b)=>a-b);
+
+  if(!gameNos.length){
+    el.innerHTML=`<div style="padding:40px;text-align:center;color:var(--mt)">해당 쿼터에 완료된 경기가 없습니다.</div>`;
+    return;
+  }
+
+  // 각 제n경기의 마지막 완료 매치 번호
+  function lastMatchNoOfGame(gNo){
+    const nos=doneNos.filter(no=>Math.ceil(no/4)===gNo);
+    return nos.length?Math.max(...nos):null;
+  }
+
+  // 팀별 색상
+  const COLORS=['#00C4FF','#FF4D6D','#00E5A0','#FFD700','#FF9500','#C084FC','#60A5FA','#F472B6'];
+  const teamColors={};
+  teams1.forEach((t,i)=>teamColors[t.id]=COLORS[i%COLORS.length]);
+
+  // 각 제n경기 종료 후 팀 순위 계산
+  const rankData={};
+  teams1.forEach(t=>rankData[t.id]={});
+  for(const gNo of gameNos){
+    const lastNo=lastMatchNoOfGame(gNo);if(lastNo===null)continue;
+    let rows=teams1.map(t=>({...t,...getTSRange(t.id,1,lastNo)}));
+    rows=rankTeamsRange(rows);
+    rows.forEach(r=>{rankData[r.id][gNo]=r.rank;});
+  }
+
+  const numTeams=teams1.length;
+  const numGames=gameNos.length;
+  // 60경기 기준 고정 너비 - 경기 수에 비례해서 x 간격 계산
+  const totalGames=qRange.max-qRange.min+1; // 쿼터 전체 경기 수
+  const MIN_CELL=18, MAX_CELL=48;
+  const cellW=Math.max(MIN_CELL,Math.min(MAX_CELL,Math.floor(900/totalGames)));
+  const PAD={top:50,right:150,bottom:50,left:52};
+  const gW=totalGames*cellW;
+  const gH=300;
+  const W=PAD.left+gW+PAD.right;
+  const H=PAD.top+gH+PAD.bottom;
+
+  function xPos(gNo){
+    // qRange.min이 0번째 위치
+    const idx=gNo-qRange.min;
+    return PAD.left+idx*cellW+(cellW/2);
+  }
+  function yPos(rank){
+    return PAD.top+(rank-1)*(gH/(numTeams-1||1));
+  }
+
+  // 격자선 & y축 레이블
+  let grid='';
+  for(let rk=1;rk<=numTeams;rk++){
+    const y=yPos(rk);
+    grid+=`<line x1="${PAD.left}" y1="${y}" x2="${W-PAD.right}" y2="${y}" stroke="rgba(30,58,95,.35)" stroke-width="1"/>`;
+    grid+=`<text x="${PAD.left-6}" y="${y+4}" text-anchor="end" font-size="11" fill="#6B8CAE">${rk}위</text>`;
+  }
+
+  // x축 레이블 - 경기가 많으면 간격으로 표시
+  let xLabels='';
+  const step=cellW<24?5:cellW<36?3:2; // 간격 조절
+  for(let gNo=qRange.min;gNo<=qRange.max;gNo++){
+    const x=xPos(gNo);
+    // 격자 점선
+    grid+=`<line x1="${x}" y1="${PAD.top}" x2="${x}" y2="${PAD.top+gH}" stroke="rgba(30,58,95,.2)" stroke-width="1" stroke-dasharray="2,4"/>`;
+    // 레이블: 첫/마지막은 항상 표시, 나머지는 step 간격
+    const showLabel=(gNo===qRange.min||gNo===qRange.max||(gNo-qRange.min)%step===0);
+    if(showLabel){
+      // 해당 경기가 완료됐으면 흰색, 아니면 어두운 색
+      const done=gameNos.includes(gNo);
+      xLabels+=`<text x="${x}" y="${PAD.top+gH+16}" text-anchor="middle" font-size="${cellW<24?9:10}" fill="${done?'#8BA8C2':'rgba(107,140,174,.4)'}">${gNo}</text>`;
+    }
+  }
+
+  // 팀별 꺾은선 + 점
+  let lines='',dotsHtml='',legend='';
+  teams1.forEach((t,ti)=>{
+    const col=teamColors[t.id];
+    const hidden=_graphSelTeams&&!_graphSelTeams.has(t.id);
+    const op=hidden?0.07:1;
+
+    const pts=gameNos.map(gNo=>{
+      const rk=rankData[t.id][gNo];
+      return rk!=null?{x:xPos(gNo),y:yPos(rk),rk,gNo}:null;
+    }).filter(Boolean);
+
+    if(pts.length>=2){
+      const d=pts.map((p,i)=>(i===0?`M${p.x.toFixed(1)},${p.y.toFixed(1)}`:`L${p.x.toFixed(1)},${p.y.toFixed(1)}`)).join(' ');
+      lines+=`<path d="${d}" stroke="${col}" stroke-width="${hidden?1:2.5}" fill="none" opacity="${op}" stroke-linejoin="round" stroke-linecap="round"/>`;
+    }
+    pts.forEach(p=>{
+      const r=hidden?3:5;
+      dotsHtml+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r}" fill="${col}" opacity="${op}" stroke="${hidden?'none':col}" stroke-width="1"><title>${t.name} — 제${p.gNo}경기 종료 후 ${p.rk}위</title></circle>`;
+    });
+
+    // 마지막 점에 팀명 표시 (오른쪽 범례)
+    const ly=PAD.top+ti*24;
+    const tCol=hidden?'#4A6A8A':col;
+    legend+=`<g class="graph-legend" onclick="graphToggle('${t.id}')" style="cursor:pointer" opacity="${op}">
+      <line x1="${W-PAD.right+8}" y1="${ly+4}" x2="${W-PAD.right+22}" y2="${ly+4}" stroke="${col}" stroke-width="2.5"/>
+      <circle cx="${W-PAD.right+15}" cy="${ly+4}" r="4" fill="${col}"/>
+      <text x="${W-PAD.right+28}" y="${ly+8}" font-size="12" fill="${tCol}" font-weight="${hidden?'400':'600'}">${t.name}</text>
+    </g>`;
+  });
+
+  // 쿼터 구분선 (시즌 뷰일 때만)
+  let qLines='';
+  if(_graphQuarter==='season'){
+    [[15,16,'1Q'],[30,31,'2Q'],[45,46,'3Q']].forEach(([a,b,lbl])=>{
+      if(qRange.max>=b){
+        const x=(xPos(a)+xPos(b))/2;
+        qLines+=`<line x1="${x}" y1="${PAD.top}" x2="${x}" y2="${PAD.top+gH}" stroke="rgba(0,196,255,.25)" stroke-width="1.5" stroke-dasharray="5,3"/>`;
+        qLines+=`<text x="${x}" y="${PAD.top-6}" text-anchor="middle" font-size="10" fill="rgba(0,196,255,.6)">${lbl}</text>`;
+      }
+    });
+  }
+
+  const svg=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:${W}px;height:auto;display:block">
+    <rect width="${W}" height="${H}" fill="var(--bg)" rx="10"/>
+    <text x="${PAD.left+gW/2}" y="18" text-anchor="middle" font-size="13" font-weight="700" fill="#E8F4FF">일자별 순위 그래프</text>
+    <text x="${PAD.left+gW/2}" y="32" text-anchor="middle" font-size="10" fill="#6B8CAE">오른쪽 팀명을 클릭하면 팀별로 그래프를 확인할 수 있습니다.</text>
+    <text x="${PAD.left+gW/2}" y="${H-6}" text-anchor="middle" font-size="11" fill="#6B8CAE">경기</text>
+    ${grid}${xLabels}${qLines}${lines}${dotsHtml}${legend}
+  </svg>`;
+
+  const qBtns=['season','1','2','3','4'].map(q=>{
+    const labels={season:'시즌 전체','1':'1쿼터','2':'2쿼터','3':'3쿼터','4':'4쿼터'};
+    const active=_graphQuarter===q;
+    return`<button onclick="graphSetQ('${q}')" style="background:${active?'var(--ac)':'var(--sf2)'};color:${active?'#000':'var(--mt)'};border:1px solid ${active?'var(--ac)':'var(--bd)'};border-radius:7px;padding:6px 14px;font-family:var(--font);font-size:12px;font-weight:${active?'700':'500'};cursor:pointer">${labels[q]}</button>`;
+  }).join('');
+
+  el.innerHTML=`
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">${qBtns}</div>
+    <div style="overflow-x:auto;border:1px solid var(--bd);border-radius:10px;background:var(--bg)">${svg}</div>`;
+}
+
+function graphToggle(tid){
+  if(!_graphSelTeams){
+    _graphSelTeams=new Set(S.teams.filter(t=>t.div===1).map(t=>t.id));
+    _graphSelTeams.delete(tid);
+    // 하나만 남기고 싶은 경우: 나머지 다 제거 후 해당 팀만
+    _graphSelTeams=new Set([tid]);
+  } else if(_graphSelTeams.has(tid)&&_graphSelTeams.size===1){
+    _graphSelTeams=null;
+  } else {
+    if(_graphSelTeams.has(tid))_graphSelTeams.delete(tid);
+    else _graphSelTeams.add(tid);
+    if(!_graphSelTeams.size)_graphSelTeams=null;
+  }
+  renderRankGraph();
+}
+function graphSetQ(q){_graphQuarter=q;renderRankGraph();}
 function renderH2H(){
   const el=document.getElementById('detail-h2h');
   if(!el)return;
