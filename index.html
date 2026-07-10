@@ -1708,11 +1708,23 @@ function renderRecords(){
       const aAcePl=r.final.awayAce?S.teams.find(t=>t.id===m.awayId)?.players.find(p=>p.id===r.final.awayAce||p.num===r.final.awayAce):null;
       const aceLabel=`${hAcePl?hAcePl.num+'번 '+hAcePl.name:'?'} vs ${aAcePl?aAcePl.num+'번 '+aAcePl.name:'?'}`;
       const frw=roundWinner(r.final.homeSec,r.final.awaySec,r.final.homeMis,r.final.awayMis);
+      // 에이스 결정전 기여도: 승리+2 / 패배-2 / 무승부 0 (실수 페널티 없음)
+      const fhWon=frw==='home',faWon=frw==='away',fDrew=frw==='draw';
+      const fhC=fDrew?0:fhWon?2:-2;
+      const faC=fDrew?0:faWon?2:-2;
+      const fhCC=fhC>0?'var(--grn)':fhC<0?'var(--red)':'var(--mt)';
+      const faCC=faC>0?'var(--grn)':faC<0?'var(--red)':'var(--mt)';
       return`<div class="rc-final"><div class="rc-fl">⚡ FINAL · ${aceLabel}</div>
         <div class="rc-rrow">
-          <div class="rc-t ${frw==='home'?'w':frw==='away'?'l':''}">${fmt(r.final.homeSec)}<span style="font-size:10px;color:var(--mt);margin-left:3px">실수${r.final.homeMis}</span></div>
+          <div class="rc-t ${frw==='home'?'w':frw==='away'?'l':''}">
+            ${fmt(r.final.homeSec)}<span style="font-size:10px;color:var(--mt);margin-left:3px">실수${r.final.homeMis}</span>
+            <span style="font-size:10px;font-weight:700;color:${fhCC};margin-left:5px">${fhC>0?'+':''}${fhC}</span>
+          </div>
           <div class="rc-sep">|</div>
-          <div class="rc-t ${frw==='away'?'w':frw==='home'?'l':''} r">${fmt(r.final.awaySec)}<span style="font-size:10px;color:var(--mt);margin-left:3px">실수${r.final.awayMis}</span></div>
+          <div class="rc-t ${frw==='away'?'w':frw==='home'?'l':''} r">
+            <span style="font-size:10px;font-weight:700;color:${faCC};margin-right:5px">${faC>0?'+':''}${faC}</span>
+            ${fmt(r.final.awaySec)}<span style="font-size:10px;color:var(--mt);margin-left:3px">실수${r.final.awayMis}</span>
+          </div>
         </div></div>`;
     })():'';
     const ovId='ov-'+m.id;
