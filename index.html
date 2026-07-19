@@ -655,6 +655,16 @@ tr:hover td{background:rgba(0,196,255,.025)}
 
   <div class="card" style="max-width:700px;margin-bottom:16px">
     <div class="card-hdr">
+      <div class="card-ttl">올스타전 초기화</div>
+      <div style="font-size:12px;color:var(--mt);margin-top:3px">엔트리를 제외한 올스타전 경기 기록, 이벤트, 시상식을 초기화합니다</div>
+    </div>
+    <div class="card-body">
+      <button onclick="resetAllstar()" class="btn" style="background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.3)">🔄 올스타전 초기화</button>
+    </div>
+  </div>
+
+  <div class="card" style="max-width:700px;margin-bottom:16px">
+    <div class="card-hdr">
       <div class="card-ttl">대진 삭제</div>
       <div style="font-size:12px;color:var(--mt);margin-top:3px">진행되지 않은 경기(결과 미입력)만 삭제 가능합니다</div>
     </div>
@@ -752,6 +762,7 @@ async function loadFromCloud(){
         if(!S.special)S.special={noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]};
       if(!S.postseason)S.postseason={wc:[],po:[],cs:[]};
       if(!S.allstar)S.allstar={iEntry:[],tEntry:[],matches:[],events:[]};
+        _cacheInvalidate();
         lastSavedSnapshot=JSON.stringify(S);
       }
     }
@@ -803,6 +814,7 @@ async function manualSync(){
       if(!S.special)S.special={noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]};
       if(!S.postseason)S.postseason={wc:[],po:[],cs:[]};
       if(!S.allstar)S.allstar={iEntry:[],tEntry:[],matches:[],events:[]};
+        _cacheInvalidate();
       lastSavedSnapshot=JSON.stringify(S);
       refreshCurrentPage();
       setSyncStatus('synced');
@@ -829,6 +841,7 @@ async function startPolling(){
       if(!S.special)S.special={noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]};
       if(!S.postseason)S.postseason={wc:[],po:[],cs:[]};
       if(!S.allstar)S.allstar={iEntry:[],tEntry:[],matches:[],events:[]};
+        _cacheInvalidate();
       lastSavedSnapshot=json;
       refreshCurrentPage();
       setSyncStatus('synced');
@@ -1264,6 +1277,93 @@ function roundWinner(hSec,aSec,hMis,aMis){
 function fmt(v){return v===null||v===undefined?'-':v.toFixed(2)+'s'}
 function uid(){return Math.random().toString(36).substr(2,9)}
 
+
+// ════════════════════════════════════════════
+// 성능 최적화: S 스냅샷 기반 안전한 캐시
+// ════════════════════════════════════════════
+let _cacheSnapshot = '';
+const _cache = {
+  ps: new Map(),
+  ts: new Map(),
+  contrib: new Map(),
+  clutch: new Map(),
+  ranks: new Map(),
+};
+
+function _cacheCheck() {
+  const snap = S.matches.map(m=>m.no+':'+(m.result?
+    m.result.hScore+'-'+m.result.aScore+'-'+
+    m.result.rounds.map(r=>r.homeSec+','+r.awaySec+','+r.homeMis+','+r.awayMis).join('|')
+    : 'null')).join(';')
+    + '|T:' + S.teams.map(t=>t.id+t.name+t.players.map(p=>p.id+p.name).join('')).join(',')
+    + '|AS:' + (S.allstar?S.allstar.iEntry.join()+S.allstar.tEntry.join():'')
+    + '|PS:' + (S.postseason?JSON.stringify(S.postseason):'');
+  if (snap !== _cacheSnapshot) {
+    _cache.ps.clear();
+    _cache.ts.clear();
+    _cache.contrib.clear();
+    _cache.clutch.clear();
+    _cache.ranks.clear();
+    _roleStatsCache = null;
+    _cacheSnapshot = snap;
+  }
+}
+
+function _cacheInvalidate() {
+  _cacheSnapshot = '';
+  _cache.ps.clear();
+  _cache.ts.clear();
+  _cache.contrib.clear();
+  _cache.clutch.clear();
+  _cache.ranks.clear();
+  _roleStatsCache = null;
+}
+
+const _origGetPS = getPS;
+getPS = function(pid) {
+  _cacheCheck();
+  if (_cache.ps.has(pid)) return _cache.ps.get(pid);
+  const result = _origGetPS(pid);
+  _cache.ps.set(pid, result);
+  return result;
+};
+
+const _origGetTS = getTS;
+getTS = function(tid) {
+  _cacheCheck();
+  if (_cache.ts.has(tid)) return _cache.ts.get(tid);
+  const result = _origGetTS(tid);
+  _cache.ts.set(tid, result);
+  return result;
+};
+
+const _origGetPlayerContribStats = getPlayerContribStats;
+getPlayerContribStats = function(pid) {
+  _cacheCheck();
+  if (_cache.contrib.has(pid)) return _cache.contrib.get(pid);
+  const result = _origGetPlayerContribStats(pid);
+  _cache.contrib.set(pid, result);
+  return result;
+};
+
+const _origCalcClutchPoints = calcClutchPoints;
+calcClutchPoints = function(pid) {
+  _cacheCheck();
+  if (_cache.clutch.has(pid)) return _cache.clutch.get(pid);
+  const result = _origCalcClutchPoints(pid);
+  _cache.clutch.set(pid, result);
+  return result;
+};
+
+const _origGetPlayerRanksAt = getPlayerRanksAt;
+getPlayerRanksAt = function(untilMatchNo) {
+  _cacheCheck();
+  if (_cache.ranks.has(untilMatchNo)) return _cache.ranks.get(untilMatchNo);
+  const result = _origGetPlayerRanksAt(untilMatchNo);
+  _cache.ranks.set(untilMatchNo, result);
+  return result;
+};
+
 // ONBOARDING
 async function initOB(){
   // 앱 시작 시 클라우드에 기존 데이터가 있는지 확인
@@ -1513,8 +1613,17 @@ function onTI(ri){
   aC.textContent=aS!==null?'→ '+fmt(aS):'';
   const bd=document.getElementById('rwb-'+ri);
   const hI=document.getElementById('h-'+ri),aI=document.getElementById('a-'+ri);
-  const m=S.matches.find(x=>x.id===curMatch);
-  const hn=S.teams.find(t=>t.id===m?.homeId)?.name||'홈',an=S.teams.find(t=>t.id===m?.awayId)?.name||'어웨이';
+  // 올스타전 모드: asMakeFake로 팀명 가져오기
+  let hn='홈',an='어웨이';
+  if(curMatch&&curMatch.startsWith('as_')){
+    const no=parseInt(curMatch.split('_')[1]);
+    const r=AS_RDS.find(x=>x.no===no);
+    if(r){const hF=asMakeFake(r.home);const aF=asMakeFake(r.home==='i'?'t':'i');hn=hF.name;an=aF.name;}
+  } else {
+    const m=S.matches.find(x=>x.id===curMatch);
+    hn=S.teams.find(t=>t.id===m?.homeId)?.name||'홈';
+    an=S.teams.find(t=>t.id===m?.awayId)?.name||'어웨이';
+  }
   if(hS!==null&&aS!==null){
     const hMis=parseInt(document.getElementById('hm-'+ri)?.value||0);
     const aMis=parseInt(document.getElementById('am-'+ri)?.value||0);
@@ -1631,20 +1740,29 @@ function saveRec(){
     }
   }
   let final=null;
-  if(hSc===aSc){  // 동점 상황이면 FINAL
+  // 동점 상황이면 FINAL (올스타전은 별도 분기에서 처리하므로 여기서는 정규/포스트시즌만)
+  const isAllstarMatch=curMatch&&curMatch.startsWith('as_');
+  if(hSc===aSc&&!isAllstarMatch){  // 동점 상황이면 FINAL
     const hFS=parseTick(document.getElementById('hf')?.value),aFS=parseTick(document.getElementById('af')?.value);
     if(hFS===null||aFS===null)return alert('동점 상황에서는 FINAL 기록을 입력해야 합니다.');
     final={homeSec:hFS,awaySec:aFS,homeMis:parseInt(document.getElementById('hmf')?.value||0),awayMis:parseInt(document.getElementById('amf')?.value||0),homeAce:document.getElementById('hf-ace')?.value||null,awayAce:document.getElementById('af-ace')?.value||null};
     {const wf=roundWinner(hFS,aFS,final.homeMis,final.awayMis);if(wf==='home')hSc++;else if(wf==='away')aSc++;}
+  } else if(hSc===aSc&&isAllstarMatch){
+    // 올스타전 동점: FINAL이 입력돼 있으면 반영, 없으면 그냥 저장
+    const hFS=parseTick(document.getElementById('hf')?.value),aFS=parseTick(document.getElementById('af')?.value);
+    if(hFS!==null&&aFS!==null){
+      final={homeSec:hFS,awaySec:aFS,homeMis:parseInt(document.getElementById('hmf')?.value||0),awayMis:parseInt(document.getElementById('amf')?.value||0),homeAce:document.getElementById('hf-ace')?.value||null,awayAce:document.getElementById('af-ace')?.value||null};
+      {const wf=roundWinner(hFS,aFS,final.homeMis,final.awayMis);if(wf==='home')hSc++;else if(wf==='away')aSc++;}
+    }
   }
   // 올스타전 경기 저장
   if(curMatch&&curMatch.startsWith('as_')){
     const roundNo=parseInt(curMatch.split('_')[1]);
-    asEnsure();
-    if(!S.allstar.matches.length)
-      S.allstar.matches=AS_RDS.map(function(r){return{id:'asm'+r.no,no:r.no,home:r.home,result:null};});
+    asEnsure(); // asEnsure가 matches 항목까지 보장
     const m=S.allstar.matches.find(function(x){return x.no===roundNo;});
-    if(m)m.result={rounds:rounds,final:final,hScore:hSc,aScore:aSc};
+    if(!m){alert('매치 정보를 찾을 수 없습니다 (no='+roundNo+', matches='+S.allstar.matches.length+')');return;}
+    m.result={rounds:rounds,final:final,hScore:hSc,aScore:aSc};
+    _cacheInvalidate();
     closeModal('rec-modal');asDrawMatch();saveToCloud();return;
   }
   // 포스트시즌 경기 저장
@@ -2393,6 +2511,7 @@ function onImportFile(e){
       if(!S.special)S.special={noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]};
       if(!S.postseason)S.postseason={wc:[],po:[],cs:[]};
       if(!S.allstar)S.allstar={iEntry:[],tEntry:[],matches:[],events:[]};
+        _cacheInvalidate();
       initApp();
       saveToCloud();
       alert('데이터를 불러왔습니다. (클라우드에도 저장됨)');
@@ -2404,6 +2523,19 @@ function onImportFile(e){
 
 
 // SETTINGS
+function resetAllstar(){
+  if(!confirm('올스타전 경기 기록, 이벤트, 시상식을 초기화하시겠습니까?\n(엔트리와 엔트리 확정 여부는 유지됩니다.)'))return;
+  asEnsure();
+  S.allstar.matches.forEach(function(m){m.result=null;delete m.lineupI;delete m.lineupT;});
+  S.allstar.events=[];
+  awardsEnsure();
+  S.awards.allstarMVP='';
+  S.allstar.tgtMvp={};
+  _cacheInvalidate();
+  saveToCloud();
+  alert('올스타전 기록이 초기화됐습니다.');
+}
+
 function renderSettings(){
   // 선수 드롭다운 갱신
   const sel=document.getElementById('pdf-player-sel');
@@ -4022,11 +4154,18 @@ function awardsEnsure(){
 }
 function asEnsure(){
   if(!S.allstar)S.allstar={iEntry:[],tEntry:[],matches:[],events:[],confirmed:false};
+        _cacheInvalidate();
   if(!S.allstar.iEntry)S.allstar.iEntry=[];
   if(!S.allstar.tEntry)S.allstar.tEntry=[];
   if(!S.allstar.matches)S.allstar.matches=[];
   if(!S.allstar.events)S.allstar.events=[];
   if(S.allstar.confirmed===undefined)S.allstar.confirmed=false;
+  // matches 항목이 부족하면 채우기
+  AS_RDS.forEach(function(r){
+    if(!S.allstar.matches.find(function(x){return x.no===r.no;})){
+      S.allstar.matches.push({id:'asm'+r.no,no:r.no,home:r.home,result:null});
+    }
+  });
 }
 
 function asTab(n){
@@ -4234,9 +4373,6 @@ function asDrawMatch(){
   var el=document.getElementById('as-p1');
   if(!el)return;
   asEnsure();
-  if(!S.allstar.matches.length){
-    S.allstar.matches=AS_RDS.map(function(r){return{id:'asm'+r.no,no:r.no,home:r.home,result:null};});
-  }
   var iW=0,tW=0;
   S.allstar.matches.forEach(function(m){
     if(!m.result)return;
@@ -4245,17 +4381,17 @@ function asDrawMatch(){
     else{if(hw)tW++;else if(aw)iW++;}
   });
   var iOk=S.allstar.iEntry.length>0,tOk=S.allstar.tEntry.length>0;
+  var allP=S.teams.flatMap(function(t){return t.players.map(function(p){return Object.assign({},p,{teamName:t.name});});});
 
   var html='';
-  // 시리즈 점수
-  html+='<div style="display:flex;align-items:center;gap:16px;padding:16px 20px;background:var(--sf);border:1px solid var(--bd);border-radius:12px;margin-bottom:18px">';
-  html+='<span style="font-size:15px;font-weight:700;color:var(--ac)">I-올스타</span>';
-  html+='<span style="font-size:32px;font-weight:900;color:var(--ac)">'+iW+'</span>';
-  html+='<span style="color:var(--mt)">:</span>';
-  html+='<span style="font-size:32px;font-weight:900;color:var(--red)">'+tW+'</span>';
-  html+='<span style="font-size:15px;font-weight:700;color:var(--red)">T-올스타</span>';
-  html+='<span style="margin-left:auto;font-size:12px;color:var(--mt)">총 3라운드</span>';
-  html+='</div>';
+  // 시리즈 스코어
+  html+='<div style="display:flex;align-items:center;gap:16px;padding:16px 20px;background:var(--sf);border:1px solid var(--bd);border-radius:12px;margin-bottom:18px">'
+    +'<span style="font-size:15px;font-weight:700;color:var(--ac)">I-올스타</span>'
+    +'<span style="font-size:32px;font-weight:900;color:var(--ac)">'+iW+'</span>'
+    +'<span style="color:var(--mt)">:</span>'
+    +'<span style="font-size:32px;font-weight:900;color:var(--red)">'+tW+'</span>'
+    +'<span style="font-size:15px;font-weight:700;color:var(--red)">T-올스타</span>'
+    +'<span style="margin-left:auto;font-size:12px;color:var(--mt)">총 3라운드</span></div>';
 
   if(!iOk||!tOk){
     html+='<div style="background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.2);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--gld)">⚠️ 엔트리를 먼저 설정하세요. (I: '+S.allstar.iEntry.length+'명 / T: '+S.allstar.tEntry.length+'명)</div>';
@@ -4265,23 +4401,64 @@ function asDrawMatch(){
     var m=S.allstar.matches.find(function(x){return x.no===r.no;})||{no:r.no,home:r.home,result:null};
     var done=!!m.result;
     html+='<div style="background:var(--sf);border:1px solid var(--bd);border-radius:12px;margin-bottom:12px;overflow:hidden">';
-    html+='<div style="background:var(--sf2);padding:12px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between">';
-    html+='<div><div style="font-size:14px;font-weight:700">'+r.lbl+'</div>';
-    html+='<div style="font-size:11px;color:var(--mt);margin-top:2px">'+r.desc+'</div></div>';
+    html+='<div style="background:var(--sf2);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;'+(done?'border-bottom:1px solid var(--bd)':'')+'">';
+    html+='<div><div style="font-size:14px;font-weight:700">'+r.lbl+'</div>'
+      +'<div style="font-size:11px;color:var(--mt);margin-top:2px">'+r.desc+'</div></div>';
     html+='<div style="display:flex;align-items:center;gap:8px">';
     if(done){
+      var hF=asMakeFake(r.home),aF=asMakeFake(r.home==='i'?'t':'i');
+      var hw=m.result.hScore>m.result.aScore,aw=m.result.aScore>m.result.hScore;
+      var wLabel=hw?hF.name+' 승':aw?aF.name+' 승':'무승부';
       html+='<span style="font-size:20px;font-weight:900;color:var(--ac)">'+m.result.hScore+' : '+m.result.aScore+'</span>';
       html+='<span style="font-size:10px;padding:3px 8px;border-radius:10px;background:rgba(0,229,160,.1);color:var(--grn);font-weight:700">완료</span>';
-      html+='<button class="btn btn-g btn-sm" onclick="asViewM('+r.no+')">보기</button>';
+      if(iOk&&tOk)html+='<button class="btn btn-g btn-sm" onclick="asRecM('+r.no+')">수정</button>';
+      html+='</div></div>';
+      // 라운드별 결과 인라인 표시
+      html+='<div style="padding:12px 16px">';
+      // 출전 선수 정보
+      var hFull=asMakeFake(r.home),aFull=asMakeFake(r.home==='i'?'t':'i');
+      html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">';
+      m.result.rounds.forEach(function(rnd,i){
+        if(rnd.homeSec===null&&rnd.awaySec===null)return;
+        var hp=getRoundPlayer(hFull,rnd,'home',i);
+        var ap=getRoundPlayer(aFull,rnd,'away',i);
+        var rw=roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
+        var hwon=rw==='home',awon=rw==='away';
+        html+='<div style="background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;text-align:center">';
+        html+='<div style="font-size:10px;font-weight:700;color:var(--ac);margin-bottom:6px">R'+(i+1)+'</div>';
+        html+='<div style="font-size:11px;font-weight:'+(hwon?'700':'400')+';color:'+(hwon?'var(--grn)':rw==='draw'?'var(--mt)':'var(--red)')+'">'+fmt(rnd.homeSec)+'</div>';
+        html+='<div style="font-size:9px;color:var(--mt)">'+(hp?hp.name.split(' ')[0]:'?')+'</div>';
+        html+='<div style="font-size:10px;color:var(--mt);margin:3px 0">vs</div>';
+        html+='<div style="font-size:11px;font-weight:'+(awon?'700':'400')+';color:'+(awon?'var(--grn)':rw==='draw'?'var(--mt)':'var(--red)')+'">'+fmt(rnd.awaySec)+'</div>';
+        html+='<div style="font-size:9px;color:var(--mt)">'+(ap?ap.name.split(' ')[0]:'?')+'</div>';
+        html+='</div>';
+      });
+      html+='</div>';
+      if(m.result.final){
+        var fn=m.result.final;
+        var fw=roundWinner(fn.homeSec,fn.awaySec,fn.homeMis,fn.awayMis);
+        var hFw=fw==='home',aFw=fw==='away';
+        html+='<div style="background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:12px">';
+        html+='<span style="font-size:11px;font-weight:700;color:var(--gld)">FINAL</span>';
+        html+='<span style="font-size:13px;font-weight:'+(hFw?'900':'400')+';color:'+(hFw?'var(--grn)':'var(--red)')+'">'+fmt(fn.homeSec)+'</span>';
+        html+='<span style="font-size:11px;color:var(--mt)">vs</span>';
+        html+='<span style="font-size:13px;font-weight:'+(aFw?'900':'400')+';color:'+(aFw?'var(--grn)':'var(--red)')+'">'+fmt(fn.awaySec)+'</span>';
+        html+='<span style="margin-left:auto;font-size:11px;font-weight:700;color:var(--gld)">'+wLabel+'</span>';
+        html+='</div>';
+      }
+      html+='</div>';
     } else if(iOk&&tOk){
       html+='<button class="btn btn-p btn-sm" onclick="asRecM('+r.no+')">기록 입력</button>';
+      html+='</div></div>';
     } else {
       html+='<span style="font-size:12px;color:var(--mt)">엔트리 필요</span>';
+      html+='</div></div>';
     }
-    html+='</div></div></div>';
+    html+='</div>';
   });
   el.innerHTML=html;
 }
+
 
 function asRecM(no){
   var r=AS_RDS.find(function(x){return x.no===no;});
@@ -4398,11 +4575,34 @@ function asEvCard(ev,ei){
       html+='<button data-eid="'+ev.id+'" class="as-ev-open-btn btn btn-p btn-sm">경기 진행</button>';
     }
     html+='</div>';
-    // 결과 요약
+    // 결과 요약 (1~4위 전체, 공동순위 처리)
     var entries=ev.entries||[];
-    var sorted=entries.filter(function(e){return e.sec!=null;}).slice().sort(function(a,b){return Math.abs(a.sec-tgt)-Math.abs(b.sec-tgt);});
-    if(sorted.length){
-      html+='<div style="font-size:12px;color:var(--gld);font-weight:700;margin-bottom:8px">🏆 '+sorted.slice(0,3).map(function(e,i){var p=S.teams.flatMap(function(t){return t.players;}).find(function(x){return x.id===e.pid;});return (i+1)+'위 '+(p?p.name:'?')+' ('+fmt(e.sec)+', △'+Math.abs(e.sec-tgt).toFixed(2)+'s)';}).join(' · ')+'</div>';
+    var ranked=asTgtRank(entries,tgt);
+    if(ranked.length){
+      var allP2=S.teams.flatMap(function(t){return t.players;});
+      html+='<div style="margin-bottom:8px">';
+      ranked.forEach(function(r){
+        var p=allP2.find(function(x){return x.id===r.pid;});
+        var diffStr=(r.diff>=0?'+':'')+r.diff.toFixed(3)+'s';
+        var col=r.rank===1?'var(--gld)':r.rank===2?'var(--ac)':r.rank===3?'var(--grn)':'var(--mt)';
+        html+='<div style="font-size:11px;font-weight:700;color:'+col+'">'+r.rank+'위 '+(p?p.name:'?')+' ('+fmt(r.sec)+' / '+diffStr+')</div>';
+      });
+      html+='</div>';
+      // 재경기 결과
+      if(ev.replay&&ev.replay.length){
+        var rpRanked=asTgtRank(ev.replay,tgt);
+        if(rpRanked.length){
+          html+='<div style="background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.2);border-radius:8px;padding:8px 10px;margin-bottom:8px">';
+          html+='<div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:4px">🔁 재경기 결과</div>';
+          rpRanked.forEach(function(r){
+            var p=allP2.find(function(x){return x.id===r.pid;});
+            var diffStr=(r.diff>=0?'+':'')+r.diff.toFixed(3)+'s';
+            var col=r.rank===1?'var(--gld)':'var(--mt)';
+            html+='<div style="font-size:11px;font-weight:600;color:'+col+'">'+r.rank+'위 '+(p?p.name:'?')+' ('+fmt(r.sec)+' / '+diffStr+')</div>';
+          });
+          html+='</div>';
+        }
+      }
     }
     if(conf){
       html+='<div style="display:flex;justify-content:flex-end"><button data-eid="'+ev.id+'" class="as-ev-unconf-btn" style="font-size:11px;background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:var(--font)">확정 해제</button></div>';
@@ -4503,66 +4703,75 @@ function asOpenEvModal(ev){
 }
 
 // ── 목표시간 모달 (팀당 2명, 총 4명) ──
+function asTgtSlotHTML(pool,allP,entries,side,isReplay){
+  var col=side==='i'?'var(--ac)':'var(--red)';
+  var lbl=side==='i'?'🔵 I-올스타':'🔴 T-올스타';
+  var pfx=isReplay?'rp':'';
+  var sideEntries=entries.filter(function(e){return pool.indexOf(e.pid)>=0;});
+  var html='<div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:12px">';
+  html+='<div style="font-size:12px;font-weight:700;color:'+col+';margin-bottom:10px">'+lbl+' (2명)</div>';
+  for(var s=0;s<2;s++){
+    var existEn=sideEntries[s];
+    html+='<div style="margin-bottom:8px">';
+    html+='<div style="font-size:10px;color:var(--mt);margin-bottom:3px">'+(s+1)+'번 출전</div>';
+    html+='<select data-side="'+side+'" data-tgtslot="'+s+'" data-rp="'+(isReplay?'1':'0')+'" class="as-tgt-psel sel" style="width:100%;font-size:12px;padding:6px 8px;margin-bottom:4px">';
+    html+='<option value="">-- 선수 선택 --</option>';
+    pool.forEach(function(pid){
+      var p=allP.find(function(x){return x.id===pid;});
+      html+='<option value="'+pid+'"'+(existEn&&existEn.pid===pid?' selected':'')+'>'+( p?p.name+' ('+p.teamName+')':'?')+'</option>';
+    });
+    html+='</select>';
+    html+='<div style="display:flex;gap:6px">';
+    html+='<input data-side="'+side+'" data-tgtslot="'+s+'" data-rp="'+(isReplay?'1':'0')+'" class="as-tgt-rec tinp" style="flex:1;font-size:14px;text-align:center" placeholder="기록(틱)" value="'+(existEn?existEn.raw||'':'')+'">'; 
+    html+='<div style="font-size:10px;color:var(--mt);padding-top:8px" id="as-tgt-conv-'+pfx+side+s+'">'+( existEn&&existEn.sec!=null?fmt(existEn.sec):'')+'</div>';
+    html+='</div>';
+    html+='</div>';
+  }
+  html+='</div>';
+  return html;
+}
+
 function asTargetModalHTML(ev){
   var tgt=ev.tSec||parseTick(ev.tRaw);
   var allP=S.teams.flatMap(function(t){return t.players.map(function(p){return Object.assign({},p,{teamName:t.name});});});
   var iPool=S.allstar.iEntry;
   var tPool=S.allstar.tEntry;
-  // 각 팀 2명 선발 선택 + 기록 입력
+  var isReplayMode=!!(ev.replay&&ev.replay.length);
   var html='';
   html+='<div style="background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--gld)">팀당 2명씩 총 4명이 출전합니다. 출전 선수를 선택 후 기록을 입력하세요.</div>';
-  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">';
-  ['i','t'].forEach(function(side){
-    var pool=side==='i'?iPool:tPool;
-    var col=side==='i'?'var(--ac)':'var(--red)';
-    var lbl=side==='i'?'🔵 I-올스타':'🔴 T-올스타';
-    var entries=ev.entries||[];
-    // 해당 사이드의 기존 출전 선수 (entries에서 pool에 속한 것)
-    var sideEntries=entries.filter(function(e){return pool.indexOf(e.pid)>=0;});
-    // 2 슬롯
-    html+='<div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:12px">';
-    html+='<div style="font-size:12px;font-weight:700;color:'+col+';margin-bottom:10px">'+lbl+' (2명)</div>';
-    for(var s=0;s<2;s++){
-      var existEn=sideEntries[s];
-      html+='<div style="margin-bottom:8px">';
-      html+='<div style="font-size:10px;color:var(--mt);margin-bottom:3px">'+(s+1)+'번 출전</div>';
-      html+='<select data-side="'+side+'" data-tgtslot="'+s+'" class="as-tgt-psel sel" style="width:100%;font-size:12px;padding:6px 8px;margin-bottom:4px">';
-      html+='<option value="">-- 선수 선택 --</option>';
-      pool.forEach(function(pid){
-        var p=allP.find(function(x){return x.id===pid;});
-        html+='<option value="'+pid+'"'+(existEn&&existEn.pid===pid?' selected':'')+'>'+( p?p.name+' ('+p.teamName+')':'?')+'</option>';
-      });
-      html+='</select>';
-      html+='<div style="display:flex;gap:6px">';
-      html+='<input data-side="'+side+'" data-tgtslot="'+s+'" class="as-tgt-rec tinp" style="flex:1;font-size:14px;text-align:center" placeholder="기록(틱)" value="'+(existEn?existEn.raw||'':'')+'">';
-      html+='<div style="font-size:10px;color:var(--mt);padding-top:8px" data-side="'+side+'" data-tgtslot="'+s+'" id="as-tgt-conv-'+side+s+'">'+( existEn&&existEn.sec!=null?fmt(existEn.sec):'')+'</div>';
-      html+='</div>';
-      html+='</div>';
-    }
-    html+='</div>';
-  });
+  html+='<div style="font-size:12px;font-weight:700;color:var(--mt);margin-bottom:8px">📋 본 경기</div>';
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px">';
+  html+=asTgtSlotHTML(iPool,allP,ev.entries||[],'i',false);
+  html+=asTgtSlotHTML(tPool,allP,ev.entries||[],'t',false);
   html+='</div>';
-  // 순위 표시 영역
-  html+='<div id="as-tgt-rank" style="font-size:12px;font-weight:700;color:var(--gld);margin-bottom:12px"></div>';
+  html+='<div id="as-tgt-rank" style="font-size:12px;font-weight:700;color:var(--gld);margin-bottom:10px"></div>';
+  html+='<div id="as-tgt-replay-sec" style="display:'+(isReplayMode?'block':'none')+'">';
+  html+='<div style="border-top:1px solid var(--bd);padding-top:12px;margin-bottom:8px">';
+  html+='<div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px">&#x1F501; 재경기 (1위 동률)</div>';
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px">';
+  html+=asTgtSlotHTML(iPool,allP,isReplayMode?ev.replay:[],'i',true);
+  html+=asTgtSlotHTML(tPool,allP,isReplayMode?ev.replay:[],'t',true);
+  html+='</div>';
+  html+='<div id="as-tgt-rp-rank" style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:10px"></div>';
+  html+='</div></div>';
   html+='<div style="display:flex;gap:8px">';
   html+='<button id="as-tgt-save-btn" style="flex:1;background:var(--grn);color:#000;border:none;border-radius:8px;padding:10px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">저장</button>';
   html+='<button id="as-tgt-conf-btn" style="flex:1;background:var(--ac);color:#000;border:none;border-radius:8px;padding:10px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">저장 및 확정</button>';
   html+='</div>';
   return html;
 }
-
 function asBindTargetModal(ev){
   var tgt=ev.tSec||parseTick(ev.tRaw);
   var allP=S.teams.flatMap(function(t){return t.players.map(function(p){return Object.assign({},p,{teamName:t.name});});});
   var iPool=S.allstar.iEntry,tPool=S.allstar.tEntry;
 
-  function readEntries(){
+  function readEntries(isReplay){
     var entries=[];
     ['i','t'].forEach(function(side){
       var pool=side==='i'?iPool:tPool;
       for(var s=0;s<2;s++){
-        var psel=document.querySelector('.as-tgt-psel[data-side="'+side+'"][data-tgtslot="'+s+'"]');
-        var rec=document.querySelector('.as-tgt-rec[data-side="'+side+'"][data-tgtslot="'+s+'"]');
+        var psel=document.querySelector('.as-tgt-psel[data-side="'+side+'"][data-tgtslot="'+s+'"][data-rp="'+(isReplay?'1':'0')+'"]');
+        var rec=document.querySelector('.as-tgt-rec[data-side="'+side+'"][data-tgtslot="'+s+'"][data-rp="'+(isReplay?'1':'0')+'"]');
         if(!psel||!rec)continue;
         var pid=psel.value,raw=rec.value;
         if(!pid)continue;
@@ -4572,43 +4781,83 @@ function asBindTargetModal(ev){
     return entries;
   }
 
-  function updateRank(){
-    var entries=readEntries().filter(function(e){return e.sec!=null;});
-    entries.sort(function(a,b){return Math.abs(a.sec-tgt)-Math.abs(b.sec-tgt);});
-    var el=document.getElementById('as-tgt-rank');
-    if(!el)return;
-    if(!entries.length){el.textContent='';return;}
-    el.innerHTML='🏆 현재 순위: '+entries.map(function(e,i){
-      var p=allP.find(function(x){return x.id===e.pid;});
-      return (i+1)+'위 '+(p?p.name:'?')+' ('+fmt(e.sec)+', △'+Math.abs(e.sec-tgt).toFixed(2)+'s)';
-    }).join(' · ');
+  function updateRankDisplay(entries,elId){
+    var ranked=asTgtRank(entries,tgt);
+    var el=document.getElementById(elId);
+    if(!el)return ranked;
+    if(!ranked.length){el.innerHTML='';return ranked;}
+    // 1~4위 전체 표시
+    el.innerHTML='<div style="margin-bottom:4px">📊 현재 순위:</div>'+ranked.map(function(r){
+      var p=allP.find(function(x){return x.id===r.pid;});
+      var name=p?p.name:'?';
+      var diffStr=(r.diff>=0?'+':'')+r.diff.toFixed(3)+'s';
+      var col=r.rank===1?'var(--gld)':r.rank===2?'var(--ac)':r.rank===3?'var(--grn)':'var(--mt)';
+      return '<div style="color:'+col+';font-size:11px">'+r.rank+'위 '+name+' ('+fmt(r.sec)+' / '+diffStr+')</div>';
+    }).join('');
+    return ranked;
   }
 
-  // 기록 입력 → 변환 + 순위 갱신
+  function updateAll(){
+    var mainEntries=readEntries(false);
+    var ranked=updateRankDisplay(mainEntries,'as-tgt-rank');
+    // 1위 동률이면 재경기 섹션 표시
+    var hasTie=asTgtHasTie(ranked);
+    var rpSec=document.getElementById('as-tgt-replay-sec');
+    if(rpSec)rpSec.style.display=hasTie?'block':'none';
+    if(hasTie){
+      var rpEntries=readEntries(true);
+      updateRankDisplay(rpEntries,'as-tgt-rp-rank');
+    }
+  }
+
+  // 기록 입력 → 변환 표시 + 순위 갱신
   document.querySelectorAll('.as-tgt-rec').forEach(function(inp){
     inp.addEventListener('input',function(){
-      var side=this.dataset.side,slot=this.dataset.tgtslot;
+      var side=this.dataset.side,slot=this.dataset.tgtslot,rp=this.dataset.rp==='1';
       var sec=parseTick(this.value);
-      var conv=document.getElementById('as-tgt-conv-'+side+slot);
+      var pfx=rp?'rp':'';
+      var conv=document.getElementById('as-tgt-conv-'+pfx+side+slot);
       if(conv)conv.textContent=sec!=null?fmt(sec):'';
-      updateRank();
+      updateAll();
     });
   });
+  // 선수 선택 변경시도 순위 갱신
+  document.querySelectorAll('.as-tgt-psel').forEach(function(sel){
+    sel.addEventListener('change',updateAll);
+  });
 
-  function save(confirm_){
-    ev.entries=readEntries();
-    if(confirm_)ev.confirmed=true;
-    saveToCloud();asDrawEvent();
-    closeModal('as-ev-modal');
+  function save(confirmed){
+    ev.entries=readEntries(false);
+    // 재경기 저장 (1위 동률인 경우)
+    var ranked=asTgtRank(ev.entries,tgt);
+    if(asTgtHasTie(ranked)){
+      ev.replay=readEntries(true);
+    } else {
+      ev.replay=[];
+    }
+    // MVP 카운트: 1위 선수(들)에게 mvpCount+1
+    // (confirmed 시점에만 카운트 - 저장 시마다 중복 방지를 위해 mvpAwarded 플래그 사용)
+    if(confirmed&&!ev.mvpAwarded){
+      var finalRanked=ev.replay&&ev.replay.length?asTgtRank(ev.replay,tgt):ranked;
+      var winners=finalRanked.filter(function(r){return r.rank===1;});
+      if(!S.allstar.tgtMvp)S.allstar.tgtMvp={};
+      winners.forEach(function(w){
+        S.allstar.tgtMvp[w.pid]=(S.allstar.tgtMvp[w.pid]||0)+1;
+      });
+      ev.mvpAwarded=true;
+    }
+    if(confirmed)ev.confirmed=true;
+    saveToCloud();asDrawEvent();closeModal('as-ev-modal');
   }
 
   document.getElementById('as-tgt-save-btn').addEventListener('click',function(){save(false);});
   document.getElementById('as-tgt-conf-btn').addEventListener('click',function(){
-    if(!confirm('저장 후 확정하면 기록을 변경할 수 없습니다. 확정하시겠습니까?'))return;
+    if(!confirm('저장 후 확정하면 기록을 변경할 수 없습니다.'))return;
     save(true);
   });
-  updateRank();
+  updateAll();
 }
+
 
 // ── 이어달리기 모달 ──
 function asRelayModalHTML(ev){
@@ -5199,6 +5448,39 @@ function asAllPlayers(){
 
 // 올스타전 매치(3라운드)에서 개인 통계 계산
 // 이어달리기도 포함 (calcPlayerContribInMatch 방식)
+// 목표시간 맞추기 순위 계산
+// diff = sec - tgt (음수=더 빠름, 양수=더 느림)
+// |diff|가 같으면 더 빠른(음수) 기록 우선
+function asTgtRank(entries, tgt){
+  var valid=entries.filter(function(e){return e.sec!=null;}).map(function(e){
+    var diff=+(e.sec-tgt).toFixed(3);
+    return Object.assign({},e,{diff:diff,absDiff:Math.abs(diff)});
+  });
+  // 정렬: absDiff 오름차순, 같으면 diff 오름차순 (음수 우선)
+  valid.sort(function(a,b){
+    if(a.absDiff!==b.absDiff)return a.absDiff-b.absDiff;
+    return a.diff-b.diff;
+  });
+  // 공동순위 부여 (absDiff와 diff 모두 같아야 동률)
+  var rank=1;
+  for(var i=0;i<valid.length;i++){
+    if(i===0){valid[i].rank=1;}
+    else{
+      var same=valid[i].absDiff===valid[i-1].absDiff&&valid[i].diff===valid[i-1].diff;
+      if(!same)rank=i+1;
+      valid[i].rank=rank;
+    }
+  }
+  return valid;
+}
+
+// 1위 동률 여부 확인
+function asTgtHasTie(ranked){
+  if(ranked.length<2)return false;
+  return ranked[0].rank===1&&ranked[1].rank===1;
+}
+
+
 function asGetPlayerStats(pid){
   var wins=0,losses=0,times=[],mis=0,best=null,totalContrib=0,matchCount=0,mvpCount=0;
   // 올스타 매치 3라운드
@@ -5310,7 +5592,9 @@ function asGetPlayerStats(pid){
   var avgTime=times.length?+(times.reduce(function(a,b){return a+b;})/times.length).toFixed(2):null;
   var avgMis=times.length?+(mis/times.length).toFixed(2):0;
   var avgContrib=matchCount?+(totalContrib/matchCount).toFixed(2):0;
-  return{wins:wins,losses:losses,avgTime:avgTime,best:best,totalMis:mis,avgMis:avgMis,totalContrib:+totalContrib.toFixed(2),avgContrib:avgContrib,mvpCount:mvpCount};
+  // 목표시간 맞추기 MVP 가산
+  var tgtMvpCount=(S.allstar.tgtMvp&&S.allstar.tgtMvp[pid])||0;
+  return{wins:wins,losses:losses,avgTime:avgTime,best:best,totalMis:mis,avgMis:avgMis,totalContrib:+totalContrib.toFixed(2),avgContrib:avgContrib,mvpCount:mvpCount+tgtMvpCount};
 }
 
 function awardCard(title,icon,value,sub){
