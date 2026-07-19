@@ -681,6 +681,16 @@ tr:hover td{background:rgba(0,196,255,.025)}
 </div>
 
 <!-- View Modal -->
+<div class="modal-bg" id="as-ev-modal">
+  <div class="modal-card" style="max-width:560px">
+    <div class="modal-hdr">
+      <div class="modal-ttl" id="as-ev-modal-ttl">이벤트 경기</div>
+      <button class="modal-x" onclick="closeModal('as-ev-modal')">×</button>
+    </div>
+    <div class="modal-body" id="as-ev-modal-body"></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="view-modal">
   <div class="modal">
     <div class="modal-hdr">
@@ -692,7 +702,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
 </div>
 
 <script>
-const S={teams:[],matches:[],special:{noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]},postseason:{wc:[],po:[],cs:[]},allstar:{iEntry:[],tEntry:[],matches:[],events:[]}};
+const S={teams:[],matches:[],special:{noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]},postseason:{wc:[],po:[],cs:[]},allstar:{iEntry:[],tEntry:[],matches:[],events:[],confirmed:false}};
 let curMatch=null,stMode='team',tSortC='rank',tSortD='asc',pSortC='rank',pSortD='desc';
 
 
@@ -3953,11 +3963,12 @@ var AS_RDS = [
 ];
 
 function asEnsure(){
-  if(!S.allstar)S.allstar={iEntry:[],tEntry:[],matches:[],events:[]};
+  if(!S.allstar)S.allstar={iEntry:[],tEntry:[],matches:[],events:[],confirmed:false};
   if(!S.allstar.iEntry)S.allstar.iEntry=[];
   if(!S.allstar.tEntry)S.allstar.tEntry=[];
   if(!S.allstar.matches)S.allstar.matches=[];
   if(!S.allstar.events)S.allstar.events=[];
+  if(S.allstar.confirmed===undefined)S.allstar.confirmed=false;
 }
 
 function asTab(n){
@@ -4023,6 +4034,7 @@ function asDrawEntry(){
   var tTeams=asSideTeams('t');
   var iEntry=S.allstar.iEntry;
   var tEntry=S.allstar.tEntry;
+  var confirmed=S.allstar.confirmed;
 
   function posOf(tid){
     var i=ranked.findIndex(function(r){return r.id===tid;});
@@ -4041,11 +4053,11 @@ function asDrawEntry(){
         var bdr=sel?('1px solid '+col):'1px solid var(--bd)';
         var tc=sel?col:'var(--mt)';
         var fw=sel?'700':'400';
-        // data attribute 방식으로 onclick 따옴표 충돌 완전 회피
-        out+='<span data-pid="'+p.id+'" data-side="'+side+'" class="as-chip" style="'
-          +'display:inline-block;padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;'
+        var cursor=confirmed?'default':'pointer';
+        out+='<span '+(confirmed?'':'data-pid="'+p.id+'" data-side="'+side+'" class="as-chip"')+' style="'
+          +'display:inline-block;padding:5px 12px;border-radius:20px;font-size:12px;cursor:'+cursor+';'
           +'background:'+bg+';border:'+bdr+';color:'+tc+';font-weight:'+fw+';'
-          +'margin:3px;user-select:none;transition:.15s">'
+          +'margin:3px;user-select:none;transition:.15s;opacity:'+(confirmed&&!sel?'0.4':'1')+'">'
           +p.name+'<span style="font-size:10px;opacity:.6"> '+t.name+'</span></span>';
       }
     }
@@ -4054,11 +4066,11 @@ function asDrawEntry(){
 
   function buildSelected(entry,col){
     if(!entry.length)return'<span style="color:var(--mt)">없음</span>';
-    return entry.map(function(pid){
+    return entry.map(function(pid,idx){
       var p=S.teams.flatMap(function(t){return t.players;}).find(function(x){return x.id===pid;});
       var t=S.teams.find(function(t){return t.players.some(function(x){return x.id===pid;});});
-      return p?('<b style="color:'+col+'">'+p.name+'</b><span style="font-size:10px;color:var(--mt)">('+( t?t.name:'')+')</span>'):'';
-    }).filter(Boolean).join(', ');
+      return p?('<b style="color:'+col+'">'+(idx+1)+'. '+p.name+'</b><span style="font-size:10px;color:var(--mt)">('+( t?t.name:'')+')</span>'):'';
+    }).filter(Boolean).join('  ');
   }
 
   var iLbl=iTeams.map(function(t){return posOf(t.id)+' '+t.name;}).join(', ')||'(경기 기록 후 자동 배정)';
@@ -4070,6 +4082,15 @@ function asDrawEntry(){
   html+='🔵 I-올스타 (1·3·5·8위 팀): <span style="color:var(--ac)">'+iLbl+'</span><br>';
   html+='🔴 T-올스타 (2·4·6·7위 팀): <span style="color:var(--red)">'+tLbl+'</span>';
   html+='</div>';
+
+  if(confirmed){
+    // 확정 상태: 현황만 표시
+    html+='<div style="background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.3);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+    html+='<div style="font-size:13px;font-weight:700;color:var(--grn)">✅ 엔트리가 확정되었습니다. 변경이 불가합니다.</div>';
+    html+='<button id="as-reset-btn" style="background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.3);border-radius:7px;padding:7px 16px;font-family:var(--font);font-size:12px;font-weight:700;cursor:pointer">🔄 엔트리 초기화</button>';
+    html+='</div>';
+  }
+
   html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">';
 
   // I카드
@@ -4078,7 +4099,7 @@ function asDrawEntry(){
   html+='🔵 I-올스타 엔트리 <span style="font-size:11px;font-weight:400;color:var(--mt)">'+iEntry.length+'/'+AS_MAX+'명</span></div>';
   html+='<div style="padding:14px 16px">';
   html+='<div style="line-height:2;margin-bottom:10px">'+buildChips(iTeams,iEntry,'i')+'</div>';
-  html+='<div style="font-size:11px">선택: '+buildSelected(iEntry,'var(--ac)')+'</div>';
+  html+='<div style="font-size:11px;color:var(--mt)">선택 순서: '+buildSelected(iEntry,'var(--ac)')+'</div>';
   html+='</div></div>';
 
   // T카드
@@ -4087,25 +4108,50 @@ function asDrawEntry(){
   html+='🔴 T-올스타 엔트리 <span style="font-size:11px;font-weight:400;color:var(--mt)">'+tEntry.length+'/'+AS_MAX+'명</span></div>';
   html+='<div style="padding:14px 16px">';
   html+='<div style="line-height:2;margin-bottom:10px">'+buildChips(tTeams,tEntry,'t')+'</div>';
-  html+='<div style="font-size:11px">선택: '+buildSelected(tEntry,'var(--red)')+'</div>';
+  html+='<div style="font-size:11px;color:var(--mt)">선택 순서: '+buildSelected(tEntry,'var(--red)')+'</div>';
   html+='</div></div>';
 
   html+='</div>';
-  html+='<div style="text-align:center"><button class="btn btn-p" onclick="asTab(1)">올스타 매치 설정으로 →</button></div>';
+
+  if(!confirmed){
+    html+='<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">';
+    html+='<button id="as-reset-btn" style="background:rgba(255,77,109,.12);color:var(--red);border:1px solid rgba(255,77,109,.3);border-radius:7px;padding:8px 20px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">🔄 엔트리 초기화</button>';
+    html+='<button id="as-confirm-btn" style="background:var(--grn);color:#000;border:none;border-radius:7px;padding:8px 24px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">✅ 엔트리 확정</button>';
+    html+='<button class="btn btn-p" onclick="asTab(1)">올스타 매치 설정으로 →</button>';
+    html+='</div>';
+  } else {
+    html+='<div style="text-align:center"><button class="btn btn-p" onclick="asTab(1)">올스타 매치 설정으로 →</button></div>';
+  }
+
   el.innerHTML=html;
 
-  // 이벤트 위임으로 칩 클릭 처리 (onclick 따옴표 문제 완전 해결)
-  el.addEventListener('click',function handler(e){
-    var chip=e.target.closest('.as-chip');
-    if(!chip)return;
-    el.removeEventListener('click',handler);
-    asToggle(chip.dataset.pid,chip.dataset.side);
+  // 칩 클릭 (미확정 상태에서만)
+  if(!confirmed){
+    el.addEventListener('click',function handler(e){
+      var chip=e.target.closest('.as-chip');
+      if(!chip)return;
+      el.removeEventListener('click',handler);
+      asToggle(chip.dataset.pid,chip.dataset.side);
+    });
+    var confirmBtn=document.getElementById('as-confirm-btn');
+    if(confirmBtn)confirmBtn.addEventListener('click',function(){
+      if(iEntry.length===0&&tEntry.length===0){alert('엔트리를 먼저 선택해주세요.');return;}
+      if(!confirm('엔트리를 확정하면 이후 변경이 불가합니다. 확정하시겠습니까?'))return;
+      S.allstar.confirmed=true;
+      saveToCloud();asDrawEntry();
+    });
+  }
+  var resetBtn=document.getElementById('as-reset-btn');
+  if(resetBtn)resetBtn.addEventListener('click',function(){
+    if(!confirm('엔트리를 초기화하시겠습니까? 확정도 해제됩니다.'))return;
+    S.allstar.iEntry=[];S.allstar.tEntry=[];S.allstar.confirmed=false;
+    saveToCloud();asDrawEntry();
   });
 }
 
-
 function asToggle(pid,side){
   asEnsure();
+  if(S.allstar.confirmed){alert('엔트리가 확정되어 변경할 수 없습니다.');return;}
   var arr=side==='i'?S.allstar.iEntry:S.allstar.tEntry;
   var idx=arr.indexOf(pid);
   if(idx>=0)arr.splice(idx,1);
@@ -4274,85 +4320,98 @@ function asAddEv(type){
     S.allstar.events.push({id:uid(),type:'target',tRaw:raw,tSec:parseTick(raw),entries:[]});
   } else {
     var sz=parseInt(document.getElementById('as-rs').value||2);
-    S.allstar.events.push({id:uid(),type:'relay',size:sz,iRaw:'',iTime:null,tRaw:'',tTime:null});
+    // iPlayers/tPlayers: [{pid, order, raw, sec, mis}] 배열
+    S.allstar.events.push({id:uid(),type:'relay',size:sz,
+      iPlayers:[],tPlayers:[],
+      iTotal:null,tTotal:null,confirmed:false});
   }
   saveToCloud();asDrawEvent();
 }
 
 function asEvCard(ev,ei){
-  var html='<div data-evid="'+ev.id+'" class="as-ev-card" style="background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:12px">';
+  var conf=!!ev.confirmed;
+  var html='<div class="as-ev-card" style="background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:14px 16px;margin-bottom:12px">';
   if(ev.type==='target'){
     var tgt=ev.tSec||parseTick(ev.tRaw);
-    html+='<div style="font-size:13px;font-weight:700;color:var(--ac);margin-bottom:12px">🎯 목표 시간 맞추기 — 목표: '+fmt(tgt)+'</div>';
-    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:12px">';
-    var allP=S.allstar.iEntry.concat(S.allstar.tEntry);
-    allP.forEach(function(pid){
-      var p=S.teams.flatMap(function(t){return t.players;}).find(function(x){return x.id===pid;});
-      var t=S.teams.find(function(t){return t.players.some(function(x){return x.id===pid;});});
-      var en=(ev.entries||[]).find(function(e){return e.pid===pid;});
-      var isI=S.allstar.iEntry.indexOf(pid)>=0;
-      var col=isI?'var(--ac)':'var(--red)';
-      html+='<div style="background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:8px 10px">';
-      html+='<div style="font-size:11px;font-weight:700;color:'+col+';margin-bottom:4px">'+(p?p.name:'?')+'<span style="color:var(--mt);font-weight:400"> '+(t?t.name:'')+'</span></div>';
-      html+='<input data-eid="'+ev.id+'" data-pid="'+pid+'" class="as-tgt-inp" style="background:var(--bg);border:1px solid var(--bd);border-radius:6px;color:var(--tx);font-family:var(--font);font-size:13px;padding:6px 8px;width:100%;box-sizing:border-box;outline:none" placeholder="기록(틱)" value="'+(en?en.raw:'')+'">';
-      if(en&&en.sec!=null)html+='<div style="font-size:10px;color:var(--mt);margin-top:2px">'+fmt(en.sec)+' (차이 '+Math.abs(en.sec-tgt).toFixed(2)+'s)</div>';
-      html+='</div>';
-    });
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">';
+    html+='<div><div style="font-size:13px;font-weight:700;color:var(--ac)">🎯 목표 시간 맞추기</div>';
+    html+='<div style="font-size:11px;color:var(--mt);margin-top:2px">목표: '+fmt(tgt)+'</div></div>';
+    if(conf){
+      html+='<span style="font-size:11px;padding:4px 10px;border-radius:8px;background:rgba(0,229,160,.1);color:var(--grn);font-weight:700">✅ 확정</span>';
+    }else{
+      html+='<button data-eid="'+ev.id+'" class="as-ev-open-btn btn btn-p btn-sm">경기 진행</button>';
+    }
     html+='</div>';
-    var sorted=(ev.entries||[]).filter(function(e){return e.sec!=null;}).slice().sort(function(a,b){return Math.abs(a.sec-tgt)-Math.abs(b.sec-tgt);});
+    // 결과 요약
+    var entries=ev.entries||[];
+    var sorted=entries.filter(function(e){return e.sec!=null;}).slice().sort(function(a,b){return Math.abs(a.sec-tgt)-Math.abs(b.sec-tgt);});
     if(sorted.length){
-      html+='<div style="font-size:12px;font-weight:700;color:var(--gld);margin-bottom:10px">🏆 순위: ';
-      html+=sorted.slice(0,3).map(function(e,i){
-        var p=S.teams.flatMap(function(t){return t.players;}).find(function(x){return x.id===e.pid;});
-        return (i+1)+'위 '+(p?p.name:'?')+' ('+fmt(e.sec)+', 차이 '+Math.abs(e.sec-tgt).toFixed(2)+'s)';
-      }).join(' · ')+'</div>';
+      html+='<div style="font-size:12px;color:var(--gld);font-weight:700;margin-bottom:8px">🏆 '+sorted.slice(0,3).map(function(e,i){var p=S.teams.flatMap(function(t){return t.players;}).find(function(x){return x.id===e.pid;});return (i+1)+'위 '+(p?p.name:'?')+' ('+fmt(e.sec)+', △'+Math.abs(e.sec-tgt).toFixed(2)+'s)';}).join(' · ')+'</div>';
+    }
+    if(conf){
+      html+='<div style="display:flex;justify-content:flex-end"><button data-eid="'+ev.id+'" class="as-ev-unconf-btn" style="font-size:11px;background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:var(--font)">확정 해제</button></div>';
     }
   } else {
-    var iNames=S.allstar.iEntry.slice(0,ev.size).map(function(pid){var p=S.teams.flatMap(function(t){return t.players;}).find(function(x){return x.id===pid;});return p?p.name:'?';}).join(', ');
-    var tNames=S.allstar.tEntry.slice(0,ev.size).map(function(pid){var p=S.teams.flatMap(function(t){return t.players;}).find(function(x){return x.id===pid;});return p?p.name:'?';}).join(', ');
-    var winner=ev.iTime!=null&&ev.tTime!=null?(ev.iTime<ev.tTime?'I-올스타':ev.iTime>ev.tTime?'T-올스타':'무승부'):null;
-    html+='<div style="font-size:13px;font-weight:700;color:var(--ac);margin-bottom:12px">🏃 이어달리기 ('+ev.size+' vs '+ev.size+')</div>';
-    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">';
-    var sides=['i','t'];
-    sides.forEach(function(side){
-      var col=side==='i'?'var(--ac)':'var(--red)';
-      var nm=side==='i'?'I-올스타 ('+iNames+')':'T-올스타 ('+tNames+')';
-      var raw=side==='i'?ev.iRaw:ev.tRaw;
-      var time=side==='i'?ev.iTime:ev.tTime;
-      html+='<div><div style="font-size:11px;font-weight:700;color:'+col+';margin-bottom:6px">'+nm+'</div>';
-      html+='<input data-eid="'+ev.id+'" data-side="'+side+'" class="as-rly-inp" style="background:var(--bg);border:1px solid var(--bd);border-radius:7px;color:var(--tx);font-family:var(--font);font-size:15px;font-weight:700;padding:9px 12px;width:100%;box-sizing:border-box;outline:none" placeholder="합산 기록(틱)" value="'+(raw||'')+'">';
-      if(time!=null)html+='<div style="font-size:11px;color:var(--mt);margin-top:3px">→ '+fmt(time)+'</div>';
-      html+='</div>';
-    });
+    // 이어달리기
+    var iArr=ev.iPlayers||[],tArr=ev.tPlayers||[];
+    var iSecs=iArr.filter(function(p){return p&&p.sec!=null;});
+    var tSecs=tArr.filter(function(p){return p&&p.sec!=null;});
+    var iSum=iSecs.length>0?iSecs.reduce(function(a,p){return a+p.sec;},0):null;
+    var tSum=tSecs.length>0?tSecs.reduce(function(a,p){return a+p.sec;},0):null;
+    var winner=iSum!==null&&tSum!==null&&iSecs.length===ev.size&&tSecs.length===ev.size
+      ?(iSum<tSum?'I-올스타':iSum>tSum?'T-올스타':'무승부'):null;
+    html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">';
+    html+='<div><div style="font-size:13px;font-weight:700;color:var(--ac)">🏃 이어달리기 ('+ev.size+' vs '+ev.size+')</div>';
+    html+='<div style="font-size:11px;color:var(--mt);margin-top:2px">';
+    html+=iSum!==null?'I: '+fmt(iSum)+(iSecs.length<ev.size?' ('+iSecs.length+'/'+ev.size+')':''):'-';
+    html+=' | ';
+    html+=tSum!==null?'T: '+fmt(tSum)+(tSecs.length<ev.size?' ('+tSecs.length+'/'+ev.size+')':''):'-';
+    html+='</div></div>';
+    if(conf){
+      html+='<span style="font-size:11px;padding:4px 10px;border-radius:8px;background:rgba(0,229,160,.1);color:var(--grn);font-weight:700">✅ 확정</span>';
+    }else{
+      html+='<button data-eid="'+ev.id+'" class="as-ev-open-btn btn btn-p btn-sm">경기 진행</button>';
+    }
     html+='</div>';
-    if(winner)html+='<div style="font-size:14px;font-weight:700;color:var(--gld)">🏆 '+winner+' 승리 (차이: '+Math.abs(ev.iTime-ev.tTime).toFixed(2)+'s)</div>';
+    if(winner){
+      html+='<div style="font-size:13px;font-weight:700;color:var(--gld);margin-bottom:8px">🏆 '+winner+' 승리 (차이: '+Math.abs(iSum-tSum).toFixed(2)+'s)</div>';
+    }
+    if(conf){
+      html+='<div style="display:flex;justify-content:flex-end"><button data-eid="'+ev.id+'" class="as-ev-unconf-btn" style="font-size:11px;background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:var(--font)">확정 해제</button></div>';
+    }
   }
-  html+='<div style="margin-top:12px"><button data-idx="'+ei+'" class="as-del-btn" style="background:rgba(255,77,109,.1);color:var(--red);border:1px solid rgba(255,77,109,.3);border-radius:7px;padding:6px 14px;font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer">삭제</button></div>';
+  // 삭제 버튼 (미확정 상태에서만)
+  if(!conf){
+    html+='<div style="margin-top:8px;border-top:1px solid var(--bd);padding-top:8px"><button data-idx="'+ei+'" class="as-del-btn" style="font-size:11px;background:none;border:1px solid rgba(255,77,109,.3);color:var(--red);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:var(--font)">삭제</button></div>';
+  }
   html+='</div>';
   return html;
 }
 
+
+function asRelayEnsureSlot(ev,side,slot){
+  var arr=side==='i'?ev.iPlayers:ev.tPlayers;
+  while(arr.length<=slot)arr.push({pid:'',raw:'',sec:null,mis:0});
+  return arr[slot];
+}
+
 function asBindEvents(el){
-  // 목표시간 입력 이벤트
-  el.querySelectorAll('.as-tgt-inp').forEach(function(inp){
-    inp.addEventListener('input',function(){
-      var eid=this.dataset.eid,pid=this.dataset.pid,raw=this.value;
-      var ev=(S.allstar.events||[]).find(function(e){return e.id===eid;});if(!ev)return;
-      if(!ev.entries)ev.entries=[];
-      var en=ev.entries.find(function(e){return e.pid===pid;});
-      if(!en){en={pid:pid,raw:'',sec:null};ev.entries.push(en);}
-      en.raw=raw;en.sec=parseTick(raw);
-      saveToCloud();asDrawEvent();
+  // 경기 진행 버튼 → 모달 팝업
+  el.querySelectorAll('.as-ev-open-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var eid=this.dataset.eid;
+      var ev=(S.allstar.events||[]).find(function(e){return e.id===eid;});
+      if(!ev)return;
+      asOpenEvModal(ev);
     });
   });
-  // 이어달리기 입력 이벤트
-  el.querySelectorAll('.as-rly-inp').forEach(function(inp){
-    inp.addEventListener('input',function(){
-      var eid=this.dataset.eid,side=this.dataset.side,raw=this.value;
+  // 확정 해제 버튼
+  el.querySelectorAll('.as-ev-unconf-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var eid=this.dataset.eid;
       var ev=(S.allstar.events||[]).find(function(e){return e.id===eid;});if(!ev)return;
-      if(side==='i'){ev.iRaw=raw;ev.iTime=parseTick(raw);}
-      else{ev.tRaw=raw;ev.tTime=parseTick(raw);}
-      saveToCloud();asDrawEvent();
+      if(!confirm('확정을 해제하시겠습니까?'))return;
+      ev.confirmed=false;saveToCloud();asDrawEvent();
     });
   });
   // 삭제 버튼
@@ -4365,6 +4424,289 @@ function asBindEvents(el){
     });
   });
 }
+
+// ── 이벤트 모달 ──
+var _asEvModalId='';
+
+function asOpenEvModal(ev){
+  _asEvModalId=ev.id;
+  var modal=document.getElementById('as-ev-modal');
+  var ttl=document.getElementById('as-ev-modal-ttl');
+  var body=document.getElementById('as-ev-modal-body');
+  if(!modal||!body)return;
+  if(ev.type==='target'){
+    ttl.textContent='🎯 목표 시간 맞추기 — 목표: '+fmt(ev.tSec||parseTick(ev.tRaw));
+    body.innerHTML=asTargetModalHTML(ev);
+    asBindTargetModal(ev);
+  }else{
+    ttl.textContent='🏃 이어달리기 ('+ev.size+' vs '+ev.size+')';
+    body.innerHTML=asRelayModalHTML(ev);
+    asBindRelayModal(ev);
+  }
+  modal.classList.add('open');
+}
+
+// ── 목표시간 모달 (팀당 2명, 총 4명) ──
+function asTargetModalHTML(ev){
+  var tgt=ev.tSec||parseTick(ev.tRaw);
+  var allP=S.teams.flatMap(function(t){return t.players.map(function(p){return Object.assign({},p,{teamName:t.name});});});
+  var iPool=S.allstar.iEntry;
+  var tPool=S.allstar.tEntry;
+  // 각 팀 2명 선발 선택 + 기록 입력
+  var html='';
+  html+='<div style="background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--gld)">팀당 2명씩 총 4명이 출전합니다. 출전 선수를 선택 후 기록을 입력하세요.</div>';
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">';
+  ['i','t'].forEach(function(side){
+    var pool=side==='i'?iPool:tPool;
+    var col=side==='i'?'var(--ac)':'var(--red)';
+    var lbl=side==='i'?'🔵 I-올스타':'🔴 T-올스타';
+    var entries=ev.entries||[];
+    // 해당 사이드의 기존 출전 선수 (entries에서 pool에 속한 것)
+    var sideEntries=entries.filter(function(e){return pool.indexOf(e.pid)>=0;});
+    // 2 슬롯
+    html+='<div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:12px">';
+    html+='<div style="font-size:12px;font-weight:700;color:'+col+';margin-bottom:10px">'+lbl+' (2명)</div>';
+    for(var s=0;s<2;s++){
+      var existEn=sideEntries[s];
+      html+='<div style="margin-bottom:8px">';
+      html+='<div style="font-size:10px;color:var(--mt);margin-bottom:3px">'+(s+1)+'번 출전</div>';
+      html+='<select data-side="'+side+'" data-tgtslot="'+s+'" class="as-tgt-psel sel" style="width:100%;font-size:12px;padding:6px 8px;margin-bottom:4px">';
+      html+='<option value="">-- 선수 선택 --</option>';
+      pool.forEach(function(pid){
+        var p=allP.find(function(x){return x.id===pid;});
+        html+='<option value="'+pid+'"'+(existEn&&existEn.pid===pid?' selected':'')+'>'+( p?p.name+' ('+p.teamName+')':'?')+'</option>';
+      });
+      html+='</select>';
+      html+='<div style="display:flex;gap:6px">';
+      html+='<input data-side="'+side+'" data-tgtslot="'+s+'" class="as-tgt-rec tinp" style="flex:1;font-size:14px;text-align:center" placeholder="기록(틱)" value="'+(existEn?existEn.raw||'':'')+'">';
+      html+='<div style="font-size:10px;color:var(--mt);padding-top:8px" data-side="'+side+'" data-tgtslot="'+s+'" id="as-tgt-conv-'+side+s+'">'+( existEn&&existEn.sec!=null?fmt(existEn.sec):'')+'</div>';
+      html+='</div>';
+      html+='</div>';
+    }
+    html+='</div>';
+  });
+  html+='</div>';
+  // 순위 표시 영역
+  html+='<div id="as-tgt-rank" style="font-size:12px;font-weight:700;color:var(--gld);margin-bottom:12px"></div>';
+  html+='<div style="display:flex;gap:8px">';
+  html+='<button id="as-tgt-save-btn" style="flex:1;background:var(--grn);color:#000;border:none;border-radius:8px;padding:10px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">저장</button>';
+  html+='<button id="as-tgt-conf-btn" style="flex:1;background:var(--ac);color:#000;border:none;border-radius:8px;padding:10px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">저장 및 확정</button>';
+  html+='</div>';
+  return html;
+}
+
+function asBindTargetModal(ev){
+  var tgt=ev.tSec||parseTick(ev.tRaw);
+  var allP=S.teams.flatMap(function(t){return t.players.map(function(p){return Object.assign({},p,{teamName:t.name});});});
+  var iPool=S.allstar.iEntry,tPool=S.allstar.tEntry;
+
+  function readEntries(){
+    var entries=[];
+    ['i','t'].forEach(function(side){
+      var pool=side==='i'?iPool:tPool;
+      for(var s=0;s<2;s++){
+        var psel=document.querySelector('.as-tgt-psel[data-side="'+side+'"][data-tgtslot="'+s+'"]');
+        var rec=document.querySelector('.as-tgt-rec[data-side="'+side+'"][data-tgtslot="'+s+'"]');
+        if(!psel||!rec)continue;
+        var pid=psel.value,raw=rec.value;
+        if(!pid)continue;
+        entries.push({pid:pid,raw:raw,sec:parseTick(raw)});
+      }
+    });
+    return entries;
+  }
+
+  function updateRank(){
+    var entries=readEntries().filter(function(e){return e.sec!=null;});
+    entries.sort(function(a,b){return Math.abs(a.sec-tgt)-Math.abs(b.sec-tgt);});
+    var el=document.getElementById('as-tgt-rank');
+    if(!el)return;
+    if(!entries.length){el.textContent='';return;}
+    el.innerHTML='🏆 현재 순위: '+entries.map(function(e,i){
+      var p=allP.find(function(x){return x.id===e.pid;});
+      return (i+1)+'위 '+(p?p.name:'?')+' ('+fmt(e.sec)+', △'+Math.abs(e.sec-tgt).toFixed(2)+'s)';
+    }).join(' · ');
+  }
+
+  // 기록 입력 → 변환 + 순위 갱신
+  document.querySelectorAll('.as-tgt-rec').forEach(function(inp){
+    inp.addEventListener('input',function(){
+      var side=this.dataset.side,slot=this.dataset.tgtslot;
+      var sec=parseTick(this.value);
+      var conv=document.getElementById('as-tgt-conv-'+side+slot);
+      if(conv)conv.textContent=sec!=null?fmt(sec):'';
+      updateRank();
+    });
+  });
+
+  function save(confirm_){
+    ev.entries=readEntries();
+    if(confirm_)ev.confirmed=true;
+    saveToCloud();asDrawEvent();
+    closeModal('as-ev-modal');
+  }
+
+  document.getElementById('as-tgt-save-btn').addEventListener('click',function(){save(false);});
+  document.getElementById('as-tgt-conf-btn').addEventListener('click',function(){
+    if(!confirm('저장 후 확정하면 기록을 변경할 수 없습니다. 확정하시겠습니까?'))return;
+    save(true);
+  });
+  updateRank();
+}
+
+// ── 이어달리기 모달 ──
+function asRelayModalHTML(ev){
+  var iPool=S.allstar.iEntry,tPool=S.allstar.tEntry;
+  var allP=S.teams.flatMap(function(t){return t.players.map(function(p){return Object.assign({},p,{teamName:t.name});});});
+  function pName(pid){var p=allP.find(function(x){return x.id===pid;});return p?p.name+' ('+p.teamName+')':'?';}
+
+  var html='';
+  // 합산 표시 바
+  var iArr=ev.iPlayers||[],tArr=ev.tPlayers||[];
+  var iSecs=iArr.filter(function(p){return p&&p.sec!=null;});
+  var tSecs=tArr.filter(function(p){return p&&p.sec!=null;});
+  var iSum=iSecs.length>0?iSecs.reduce(function(a,p){return a+p.sec;},0):null;
+  var tSum=tSecs.length>0?tSecs.reduce(function(a,p){return a+p.sec;},0):null;
+  var winSide=iSum!==null&&tSum!==null&&iSecs.length===ev.size&&tSecs.length===ev.size?(iSum<tSum?'i':iSum>tSum?'t':'d'):null;
+
+  html+='<div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center">';
+  html+='<div style="text-align:center"><div style="font-size:11px;font-weight:700;color:var(--ac);margin-bottom:4px">🔵 I-올스타</div>';
+  html+='<div id="rly-m-itotal" style="font-size:20px;font-weight:900;color:'+(winSide==='i'?'var(--grn)':winSide==='t'?'var(--red)':'var(--ac)')+'">'+(iSum!==null?(iSecs.length<ev.size?fmt(iSum)+' ('+iSecs.length+'/'+ev.size+')':fmt(iSum)):'-')+'</div>';
+  html+='<div id="rly-m-imis" style="font-size:10px;color:var(--mt);margin-top:2px">실수: '+iArr.reduce(function(a,p){return a+(p&&p.mis||0);},0)+'회</div></div>';
+  html+='<div style="text-align:center;font-size:18px;color:var(--mt);font-weight:700">:</div>';
+  html+='<div style="text-align:center"><div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:4px">🔴 T-올스타</div>';
+  html+='<div id="rly-m-ttotal" style="font-size:20px;font-weight:900;color:'+(winSide==='t'?'var(--grn)':winSide==='i'?'var(--red)':'var(--red)')+'">'+(tSum!==null?(tSecs.length<ev.size?fmt(tSum)+' ('+tSecs.length+'/'+ev.size+')':fmt(tSum)):'-')+'</div>';
+  html+='<div id="rly-m-tmis" style="font-size:10px;color:var(--mt);margin-top:2px">실수: '+tArr.reduce(function(a,p){return a+(p&&p.mis||0);},0)+'회</div></div>';
+  html+='</div>';
+  if(winSide&&winSide!=='d')html+='<div style="text-align:center;font-size:13px;font-weight:700;color:var(--gld);margin-bottom:10px" id="rly-m-winner">🏆 '+(winSide==='i'?'I-올스타':'T-올스타')+' 승리 (차이: '+Math.abs(iSum-tSum).toFixed(2)+'s)</div>';
+  else html+='<div id="rly-m-winner" style="display:none"></div>';
+
+  // 주자별 행
+  for(var slot=0;slot<ev.size;slot++){
+    var ipl=iArr[slot]||{pid:'',raw:'',sec:null,mis:0};
+    var tpl=tArr[slot]||{pid:'',raw:'',sec:null,mis:0};
+    var rw=ipl.sec!==null&&tpl.sec!==null?(ipl.sec<tpl.sec?'i':ipl.sec>tpl.sec?'t':'d'):null;
+    html+='<div style="background:var(--sf2);border:1px solid var(--bd);border-radius:9px;padding:10px 12px;margin-bottom:8px">';
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+    html+='<span style="font-size:11px;font-weight:700;color:var(--ac)">R'+(slot+1)+'</span>';
+    if(rw)html+='<span style="font-size:11px;font-weight:700;color:'+(rw==='d'?'var(--mt)':'var(--grn)')+'">'+( rw==='i'?'I 승':rw==='t'?'T 승':'무승부')+'</span>';
+    html+='</div>';
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">';
+    html+='<div><div style="font-size:10px;color:var(--mt);margin-bottom:3px">I-올스타 주자</div>';
+    html+='<select data-side="i" data-slot="'+slot+'" class="rly-m-psel sel" style="width:100%;font-size:12px;padding:6px 8px"><option value="">-- 선택 --</option>';
+    iPool.forEach(function(pid){html+='<option value="'+pid+'"'+(ipl.pid===pid?' selected':'')+'>'+pName(pid)+'</option>';});
+    html+='</select></div>';
+    html+='<div><div style="font-size:10px;color:var(--mt);margin-bottom:3px">T-올스타 주자</div>';
+    html+='<select data-side="t" data-slot="'+slot+'" class="rly-m-psel sel" style="width:100%;font-size:12px;padding:6px 8px"><option value="">-- 선택 --</option>';
+    tPool.forEach(function(pid){html+='<option value="'+pid+'"'+(tpl.pid===pid?' selected':'')+'>'+pName(pid)+'</option>';});
+    html+='</select></div></div>';
+    html+='<div style="display:grid;grid-template-columns:1fr 60px auto 60px 1fr;gap:6px;align-items:center">';
+    html+='<div style="text-align:center"><input data-side="i" data-slot="'+slot+'" class="rly-m-rec tinp'+(rw==='i'?' w':rw==='t'?' l':'')+'" style="width:100%;font-size:14px;text-align:center" placeholder="0.00" value="'+(ipl.raw||'')+'"><div id="rly-m-ic-'+slot+'" style="font-size:10px;color:var(--mt);margin-top:2px">'+(ipl.sec!=null?fmt(ipl.sec):'')+'</div></div>';
+    html+='<div style="text-align:center"><div style="font-size:9px;color:var(--mt);margin-bottom:2px">실수</div><input data-side="i" data-slot="'+slot+'" class="rly-m-mis minp" type="number" min="0" value="'+(ipl.mis||0)+'"></div>';
+    html+='<div style="text-align:center;color:var(--mt);font-size:14px">|</div>';
+    html+='<div style="text-align:center"><div style="font-size:9px;color:var(--mt);margin-bottom:2px">실수</div><input data-side="t" data-slot="'+slot+'" class="rly-m-mis minp" type="number" min="0" value="'+(tpl.mis||0)+'"></div>';
+    html+='<div style="text-align:center"><input data-side="t" data-slot="'+slot+'" class="rly-m-rec tinp'+(rw==='t'?' w':rw==='i'?' l':'')+'" style="width:100%;font-size:14px;text-align:center" placeholder="0.00" value="'+(tpl.raw||'')+'"><div id="rly-m-tc-'+slot+'" style="font-size:10px;color:var(--mt);margin-top:2px">'+(tpl.sec!=null?fmt(tpl.sec):'')+'</div></div>';
+    html+='</div></div>';
+  }
+  html+='<div style="display:flex;gap:8px;margin-top:12px">';
+  html+='<button id="rly-m-save-btn" style="flex:1;background:var(--grn);color:#000;border:none;border-radius:8px;padding:10px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">저장</button>';
+  html+='<button id="rly-m-conf-btn" style="flex:1;background:var(--ac);color:#000;border:none;border-radius:8px;padding:10px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">저장 및 확정</button>';
+  html+='</div>';
+  return html;
+}
+
+function asBindRelayModal(ev){
+  var iPool=S.allstar.iEntry,tPool=S.allstar.tEntry;
+
+  function updateTotals(){
+    // 현재 입력값 읽기
+    var iArr=[], tArr=[];
+    for(var s=0;s<ev.size;s++){
+      var iRec=document.querySelector('.rly-m-rec[data-side="i"][data-slot="'+s+'"]');
+      var tRec=document.querySelector('.rly-m-rec[data-side="t"][data-slot="'+s+'"]');
+      var iMis=document.querySelector('.rly-m-mis[data-side="i"][data-slot="'+s+'"]');
+      var tMis=document.querySelector('.rly-m-mis[data-side="t"][data-slot="'+s+'"]');
+      var iSec=iRec?parseTick(iRec.value):null;
+      var tSec=tRec?parseTick(tRec.value):null;
+      iArr.push({sec:iSec,mis:iMis?parseInt(iMis.value||0):0});
+      tArr.push({sec:tSec,mis:tMis?parseInt(tMis.value||0):0});
+      // 변환값 표시
+      var ic=document.getElementById('rly-m-ic-'+s);
+      var tc=document.getElementById('rly-m-tc-'+s);
+      if(ic)ic.textContent=iSec!=null?fmt(iSec):'';
+      if(tc)tc.textContent=tSec!=null?fmt(tSec):'';
+      // 승패 색상 업데이트
+      if(iSec!=null&&tSec!=null){
+        var iMisVal=iMis?parseInt(iMis.value||0):0;
+        var tMisVal=tMis?parseInt(tMis.value||0):0;
+        var rw=roundWinner(iSec,tSec,iMisVal,tMisVal);
+        if(iRec)iRec.className='rly-m-rec tinp'+(rw==='home'?' w':rw==='away'?' l':'');
+        if(tRec)tRec.className='rly-m-rec tinp'+(rw==='away'?' w':rw==='home'?' l':'');
+      }
+    }
+    var iValids=iArr.filter(function(p){return p.sec!=null;});
+    var tValids=tArr.filter(function(p){return p.sec!=null;});
+    var iSum=iValids.length>0?iValids.reduce(function(a,p){return a+p.sec;},0):null;
+    var tSum=tValids.length>0?tValids.reduce(function(a,p){return a+p.sec;},0):null;
+    var iMisSum=iArr.reduce(function(a,p){return a+p.mis;},0);
+    var tMisSum=tArr.reduce(function(a,p){return a+p.mis;},0);
+    var done=iValids.length===ev.size&&tValids.length===ev.size;
+    var winSide=done&&iSum!==null&&tSum!==null?(iSum<tSum?'i':iSum>tSum?'t':'d'):null;
+    var iLabel=iSum!==null?(iValids.length<ev.size?fmt(iSum)+' ('+iValids.length+'/'+ev.size+')':fmt(iSum)):'-';
+    var tLabel=tSum!==null?(tValids.length<ev.size?fmt(tSum)+' ('+tValids.length+'/'+ev.size+')':fmt(tSum)):'-';
+    var iEl=document.getElementById('rly-m-itotal');
+    var tEl=document.getElementById('rly-m-ttotal');
+    var iMEl=document.getElementById('rly-m-imis');
+    var tMEl=document.getElementById('rly-m-tmis');
+    var wEl=document.getElementById('rly-m-winner');
+    if(iEl){iEl.textContent=iLabel;iEl.style.color=winSide==='i'?'var(--grn)':winSide==='t'?'var(--red)':'var(--ac)';}
+    if(tEl){tEl.textContent=tLabel;tEl.style.color=winSide==='t'?'var(--grn)':winSide==='i'?'var(--red)':'var(--red)';}
+    if(iMEl)iMEl.textContent='실수: '+iMisSum+'회';
+    if(tMEl)tMEl.textContent='실수: '+tMisSum+'회';
+    if(wEl){
+      if(winSide&&winSide!=='d'){wEl.textContent='🏆 '+(winSide==='i'?'I-올스타':'T-올스타')+' 승리 (차이: '+Math.abs(iSum-tSum).toFixed(2)+'s)';wEl.style.display='';}
+      else if(winSide==='d'){wEl.textContent='— 동률';wEl.style.display='';}
+      else wEl.style.display='none';
+    }
+  }
+
+  document.querySelectorAll('.rly-m-rec,.rly-m-mis').forEach(function(inp){
+    inp.addEventListener('input',updateTotals);
+  });
+
+  function collectData(){
+    var iPlayers=[],tPlayers=[];
+    for(var s=0;s<ev.size;s++){
+      var iPsel=document.querySelector('.rly-m-psel[data-side="i"][data-slot="'+s+'"]');
+      var tPsel=document.querySelector('.rly-m-psel[data-side="t"][data-slot="'+s+'"]');
+      var iRec=document.querySelector('.rly-m-rec[data-side="i"][data-slot="'+s+'"]');
+      var tRec=document.querySelector('.rly-m-rec[data-side="t"][data-slot="'+s+'"]');
+      var iMis=document.querySelector('.rly-m-mis[data-side="i"][data-slot="'+s+'"]');
+      var tMis=document.querySelector('.rly-m-mis[data-side="t"][data-slot="'+s+'"]');
+      var iRaw=iRec?iRec.value:'',tRaw=tRec?tRec.value:'';
+      iPlayers.push({pid:iPsel?iPsel.value:'',raw:iRaw,sec:parseTick(iRaw),mis:iMis?parseInt(iMis.value||0):0});
+      tPlayers.push({pid:tPsel?tPsel.value:'',raw:tRaw,sec:parseTick(tRaw),mis:tMis?parseInt(tMis.value||0):0});
+    }
+    return{iPlayers:iPlayers,tPlayers:tPlayers};
+  }
+
+  function save(conf){
+    var data=collectData();
+    ev.iPlayers=data.iPlayers;ev.tPlayers=data.tPlayers;
+    if(conf)ev.confirmed=true;
+    saveToCloud();asDrawEvent();closeModal('as-ev-modal');
+  }
+
+  document.getElementById('rly-m-save-btn').addEventListener('click',function(){save(false);});
+  document.getElementById('rly-m-conf-btn').addEventListener('click',function(){
+    if(!confirm('저장 후 확정하면 기록을 변경할 수 없습니다.'))return;
+    save(true);
+  });
+  updateTotals();
+}
+
+function asRelayUpdateTotal(){} // 더 이상 인라인 업데이트 불필요 (모달 방식으로 전환)
+
 
 
 // ════════════════════════════════════════════
