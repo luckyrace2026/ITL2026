@@ -608,20 +608,29 @@ tr:hover td{background:rgba(0,196,255,.025)}
 <!-- 올스타전 -->
 <div id="page-allstar" class="page">
   <div class="ph"><div class="ph-ttl">올스타 <span>전</span></div></div>
-  <div id="as-tabs" style="display:flex;border-bottom:1px solid var(--bd);margin-bottom:20px">
+  <div id="as-tabs" style="display:flex;border-bottom:1px solid var(--bd);margin-bottom:20px;flex-wrap:wrap">
     <button id="as-t0" onclick="asTab(0)" style="background:none;border:none;border-bottom:2px solid var(--ac);color:var(--ac);font-family:var(--font);font-size:13px;font-weight:700;padding:10px 20px;cursor:pointer">엔트리 설정</button>
     <button id="as-t1" onclick="asTab(1)" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--mt);font-family:var(--font);font-size:13px;font-weight:500;padding:10px 20px;cursor:pointer">올스타 매치</button>
     <button id="as-t2" onclick="asTab(2)" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--mt);font-family:var(--font);font-size:13px;font-weight:500;padding:10px 20px;cursor:pointer">이벤트 경기</button>
+    <button id="as-t3" onclick="asTab(3)" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--mt);font-family:var(--font);font-size:13px;font-weight:500;padding:10px 20px;cursor:pointer">시상식</button>
+    <button id="as-t4" onclick="asTab(4)" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--mt);font-family:var(--font);font-size:13px;font-weight:500;padding:10px 20px;cursor:pointer">순위표</button>
   </div>
   <div id="as-p0"></div>
   <div id="as-p1" style="display:none"></div>
   <div id="as-p2" style="display:none"></div>
+  <div id="as-p3" style="display:none"></div>
+  <div id="as-p4" style="display:none"></div>
 </div>
 
 <!-- 순위 기록 -->
 <div id="page-qrecord" class="page">
   <div class="ph"><div class="ph-ttl">순위 <span>기록</span></div></div>
+  <div style="display:flex;gap:8px;margin-bottom:20px">
+    <button id="qr-main-btn" onclick="qrMainTab('record')" style="background:var(--ac);color:#000;border:1px solid var(--ac);border-radius:8px;padding:9px 20px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer">순위 기록</button>
+    <button id="qr-award-btn" onclick="qrMainTab('award')" style="background:transparent;color:var(--mt);border:1px solid var(--bd);border-radius:8px;padding:9px 20px;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer">시상식</button>
+  </div>
   <div id="qrecord-body"></div>
+  <div id="qrecord-award" style="display:none"></div>
 </div>
 
 <!-- 설정 -->
@@ -702,7 +711,7 @@ tr:hover td{background:rgba(0,196,255,.025)}
 </div>
 
 <script>
-const S={teams:[],matches:[],special:{noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]},postseason:{wc:[],po:[],cs:[]},allstar:{iEntry:[],tEntry:[],matches:[],events:[],confirmed:false}};
+const S={teams:[],matches:[],special:{noFault:[],sub20:[],sub19:[],dominate:[],perfect:[]},postseason:{wc:[],po:[],cs:[]},allstar:{iEntry:[],tEntry:[],matches:[],events:[],confirmed:false},awards:{seasonMVP:'',allstarMVP:''}};
 let curMatch=null,stMode='team',tSortC='rank',tSortD='asc',pSortC='rank',pSortD='desc';
 
 
@@ -1358,7 +1367,7 @@ function showPage(n,btn){
   if(n==='detail')renderDetail();
   if(n==='postseason')renderPostseason();
   if(n==='allstar')renderAllstar();
-  if(n==='qrecord')renderQRecord();
+  if(n==='qrecord'){qrMainTabCur='record';qrMainTab('record');}
   if(n==='settings')renderSettings();
 }
 function closeModal(id){document.getElementById(id).classList.remove('open')}
@@ -2899,6 +2908,21 @@ let qrMode='season'; // 'season' | 'quarter'
 let qrQuarter=1;     // 선택된 쿼터 (1~4)
 let qrTeamOrPlayer='team'; // 'team' | 'player'
 
+var qrMainTabCur='record';
+function qrMainTab(tab){
+  qrMainTabCur=tab;
+  var rb=document.getElementById('qr-main-btn');
+  var ab=document.getElementById('qr-award-btn');
+  var rd=document.getElementById('qrecord-body');
+  var ad=document.getElementById('qrecord-award');
+  if(rb){rb.style.background=tab==='record'?'var(--ac)':'transparent';rb.style.color=tab==='record'?'#000':'var(--mt)';rb.style.borderColor=tab==='record'?'var(--ac)':'var(--bd)';}
+  if(ab){ab.style.background=tab==='award'?'var(--ac)':'transparent';ab.style.color=tab==='award'?'#000':'var(--mt)';ab.style.borderColor=tab==='award'?'var(--ac)':'var(--bd)';}
+  if(rd)rd.style.display=tab==='record'?'':'none';
+  if(ad)ad.style.display=tab==='award'?'':'none';
+  if(tab==='record')renderQRecord();
+  else renderSeasonAwards();
+}
+
 function renderQRecord(){
   const con=document.getElementById('qrecord-body');
   if(!con)return;
@@ -3962,6 +3986,9 @@ var AS_RDS = [
   {no:3,home:'i',lbl:'3라운드',desc:'I선공 vs T후공'}
 ];
 
+function awardsEnsure(){
+  if(!S.awards)S.awards={seasonMVP:'',allstarMVP:''};
+}
 function asEnsure(){
   if(!S.allstar)S.allstar={iEntry:[],tEntry:[],matches:[],events:[],confirmed:false};
   if(!S.allstar.iEntry)S.allstar.iEntry=[];
@@ -3973,36 +4000,32 @@ function asEnsure(){
 
 function asTab(n){
   asCurTab=n;
-  for(var i=0;i<3;i++){
+  for(var i=0;i<5;i++){
     var p=document.getElementById('as-p'+i);
     var b=document.getElementById('as-t'+i);
-    if(!p||!b)return;
-    p.style.display=i===n?'block':'none';
-    b.style.color=i===n?'var(--ac)':'var(--mt)';
-    b.style.borderBottom=i===n?'2px solid var(--ac)':'2px solid transparent';
-    b.style.fontWeight=i===n?'700':'500';
+    if(p)p.style.display=i===n?'block':'none';
+    if(b){b.style.color=i===n?'var(--ac)':'var(--mt)';b.style.borderBottom=i===n?'2px solid var(--ac)':'2px solid transparent';b.style.fontWeight=i===n?'700':'500';}
   }
   if(n===0)asDrawEntry();
   else if(n===1)asDrawMatch();
-  else asDrawEvent();
+  else if(n===2)asDrawEvent();
+  else if(n===3)asDrawAwards();
+  else asDrawASRanking();
 }
 
 function renderAllstar(){
-  asEnsure();
-  // 탭 버튼 상태 동기화
-  for(var i=0;i<3;i++){
+  asEnsure();awardsEnsure();
+  for(var i=0;i<5;i++){
     var p=document.getElementById('as-p'+i);
     var b=document.getElementById('as-t'+i);
-    if(!p||!b)continue;
-    var act=i===asCurTab;
-    p.style.display=act?'block':'none';
-    b.style.color=act?'var(--ac)':'var(--mt)';
-    b.style.borderBottom=act?'2px solid var(--ac)':'2px solid transparent';
-    b.style.fontWeight=act?'700':'500';
+    if(p)p.style.display=i===asCurTab?'block':'none';
+    if(b){b.style.color=i===asCurTab?'var(--ac)':'var(--mt)';b.style.borderBottom=i===asCurTab?'2px solid var(--ac)':'2px solid transparent';b.style.fontWeight=i===asCurTab?'700':'500';}
   }
   if(asCurTab===0)asDrawEntry();
   else if(asCurTab===1)asDrawMatch();
-  else asDrawEvent();
+  else if(asCurTab===2)asDrawEvent();
+  else if(asCurTab===3)asDrawAwards();
+  else asDrawASRanking();
 }
 
 // 순위 기반 팀 목록 (포지션 인덱스 기반)
@@ -5126,6 +5149,331 @@ function openPlayerPDF(){
   if(!win){alert('팝업이 차단됐습니다. 브라우저에서 팝업을 허용해주세요.');return;}
   win.document.write(html);
   win.document.close();
+}
+
+// ════════════════════════════════════════════
+// 올스타전 & 시즌 시상식/순위표
+// ════════════════════════════════════════════
+
+// ── 올스타전 참가 선수 목록 (엔트리 기준) ──
+function asAllPlayers(){
+  var entry=(S.allstar.iEntry||[]).concat(S.allstar.tEntry||[]);
+  return entry.map(function(pid){
+    var p=S.teams.flatMap(function(t){return t.players.map(function(x){return Object.assign({},x,{teamName:t.name});});}).find(function(x){return x.id===pid;});
+    return p||{id:pid,name:'?',num:0,teamName:'?'};
+  });
+}
+
+// 올스타전 매치(3라운드)에서 개인 통계 계산
+// 이어달리기도 포함 (calcPlayerContribInMatch 방식)
+function asGetPlayerStats(pid){
+  var wins=0,losses=0,times=[],mis=0,best=null,totalContrib=0,matchCount=0,mvpCount=0;
+  // 올스타 매치 3라운드
+  var asMathces=S.allstar.matches||[];
+  for(var mi=0;mi<asMathces.length;mi++){
+    var m=asMathces[mi];
+    if(!m.result)continue;
+    var r=m.result;
+    var hFake=asMakeFake(m.home),aFake=asMakeFake(m.home==='i'?'t':'i');
+    var played=false;
+    var allRndTimes=[];
+    for(var ri=0;ri<4;ri++){
+      var rnd=r.rounds[ri];
+      if(!rnd||rnd.homeSec===null||rnd.awaySec===null)continue;
+      allRndTimes.push(rnd.homeSec,rnd.awaySec);
+    }
+    var minT=allRndTimes.length?Math.min.apply(null,allRndTimes):0;
+    var maxT=allRndTimes.length?Math.max.apply(null,allRndTimes):0;
+    var rng=maxT-minT;
+    for(var ri=0;ri<4;ri++){
+      var rnd=r.rounds[ri];
+      if(!rnd||rnd.homeSec===null||rnd.awaySec===null)continue;
+      var hp=getRoundPlayer(hFake,rnd,'home',ri),ap=getRoundPlayer(aFake,rnd,'away',ri);
+      var amH=hp&&hp.id===pid,amA=ap&&ap.id===pid;
+      if(!amH&&!amA)continue;
+      played=true;
+      var mySec=amH?rnd.homeSec:rnd.awaySec;
+      var myMis=amH?(rnd.homeMis||0):(rnd.awayMis||0);
+      var rw=roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
+      var iWon=(amH&&rw==='home')||(amA&&rw==='away');
+      if(rw!=='draw'){if(iWon)wins++;else losses++;}
+      times.push(mySec);
+      mis+=myMis;
+      if(best===null||mySec<best)best=mySec;
+      // 기여도
+      var rc=rng===0?2.25:+(4-(3.5*(mySec-minT)/rng)).toFixed(2);
+      var mc=myMis===0?0:myMis===1?-1:-(2*myMis-2);
+      var wc=rw==='draw'?0:iWon?1:-1;
+      totalContrib+=+(rc+mc+wc).toFixed(2);
+    }
+    if(played){
+      matchCount++;
+      // MVP: 올스타 매치 내 MVP (기여도 기준)
+      var allContribs=[];
+      var allFakes=[hFake,aFake];
+      var fakeAllTimes=[];
+      for(var ri2=0;ri2<4;ri2++){
+        var rnd2=r.rounds[ri2];
+        if(rnd2&&rnd2.homeSec!==null&&rnd2.awaySec!==null){fakeAllTimes.push(rnd2.homeSec,rnd2.awaySec);}
+      }
+      var fMin=fakeAllTimes.length?Math.min.apply(null,fakeAllTimes):0;
+      var fMax=fakeAllTimes.length?Math.max.apply(null,fakeAllTimes):0;
+      var fRng=fMax-fMin;
+      for(var fi=0;fi<2;fi++){
+        var fk=allFakes[fi];
+        for(var ri3=0;ri3<4;ri3++){
+          var rnd3=r.rounds[ri3];
+          if(!rnd3||rnd3.homeSec===null||rnd3.awaySec===null)continue;
+          var isH=fi===0;
+          var fp=getRoundPlayer(fk,rnd3,isH?'home':'away',ri3);
+          if(!fp)continue;
+          var fSec=isH?rnd3.homeSec:rnd3.awaySec;
+          var fMis=isH?(rnd3.homeMis||0):(rnd3.awayMis||0);
+          var frw=roundWinner(rnd3.homeSec,rnd3.awaySec,rnd3.homeMis,rnd3.awayMis);
+          var fWon=(isH&&frw==='home')||(!isH&&frw==='away');
+          var frc=fRng===0?2.25:+(4-(3.5*(fSec-fMin)/fRng)).toFixed(2);
+          var fmc=fMis===0?0:fMis===1?-1:-(2*fMis-2);
+          var fwc=frw==='draw'?0:fWon?1:-1;
+          allContribs.push({id:fp.id,c:+(frc+fmc+fwc).toFixed(2)});
+        }
+      }
+      allContribs.sort(function(a,b){return b.c-a.c;});
+      if(allContribs.length&&allContribs[0].id===pid)mvpCount++;
+    }
+  }
+  // 이어달리기 통계 포함
+  var relayEvs=(S.allstar.events||[]).filter(function(e){return e.type==='relay'&&e.confirmed;});
+  for(var ei=0;ei<relayEvs.length;ei++){
+    var ev=relayEvs[ei];
+    var iArr=ev.iPlayers||[],tArr=ev.tPlayers||[];
+    var allSlots=iArr.concat(tArr).filter(function(p){return p&&p.sec!=null;});
+    var rlyTimes=allSlots.map(function(p){return p.sec;});
+    var rlyMin=rlyTimes.length?Math.min.apply(null,rlyTimes):0;
+    var rlyMax=rlyTimes.length?Math.max.apply(null,rlyTimes):0;
+    var rlyRng=rlyMax-rlyMin;
+    var iTotal=iArr.filter(function(p){return p&&p.sec!=null;}).length===ev.size?iArr.reduce(function(a,p){return a+p.sec;},0):null;
+    var tTotal=tArr.filter(function(p){return p&&p.sec!=null;}).length===ev.size?tArr.reduce(function(a,p){return a+p.sec;},0):null;
+    function processSlots(arr,teamWon){
+      for(var si=0;si<arr.length;si++){
+        var pl=arr[si];
+        if(!pl||pl.pid!==pid||pl.sec==null)continue;
+        times.push(pl.sec);
+        mis+=(pl.mis||0);
+        if(best===null||pl.sec<best)best=pl.sec;
+        var rc2=rlyRng===0?2.25:+(4-(3.5*(pl.sec-rlyMin)/rlyRng)).toFixed(2);
+        var mc2=(pl.mis||0)===0?0:(pl.mis||0)===1?-1:-(2*(pl.mis||0)-2);
+        var wc2=iTotal===null||tTotal===null?0:teamWon?1:-1;
+        totalContrib+=+(rc2+mc2+wc2).toFixed(2);
+        var rlyWon=iTotal!==null&&tTotal!==null&&teamWon;
+        if(rlyWon)wins++;else if(iTotal!==null&&tTotal!==null)losses++;
+        matchCount++;
+      }
+    }
+    var iWon=iTotal!==null&&tTotal!==null&&iTotal<tTotal;
+    var tWon=iTotal!==null&&tTotal!==null&&tTotal<iTotal;
+    processSlots(iArr,iWon);
+    processSlots(tArr,tWon);
+  }
+  var avgTime=times.length?+(times.reduce(function(a,b){return a+b;})/times.length).toFixed(2):null;
+  var avgMis=times.length?+(mis/times.length).toFixed(2):0;
+  var avgContrib=matchCount?+(totalContrib/matchCount).toFixed(2):0;
+  return{wins:wins,losses:losses,avgTime:avgTime,best:best,totalMis:mis,avgMis:avgMis,totalContrib:+totalContrib.toFixed(2),avgContrib:avgContrib,mvpCount:mvpCount};
+}
+
+function awardCard(title,icon,value,sub){
+  return '<div style="background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:16px;display:flex;align-items:center;gap:14px">'
+    +'<div style="font-size:28px">'+icon+'</div>'
+    +'<div><div style="font-size:11px;color:var(--mt);margin-bottom:2px">'+title+'</div>'
+    +'<div style="font-size:15px;font-weight:700;color:var(--tx)">'+value+'</div>'
+    +(sub?'<div style="font-size:11px;color:var(--ac);margin-top:2px">'+sub+'</div>':'')
+    +'</div></div>';
+}
+
+// ── 올스타 시상식 ──
+function asDrawAwards(){
+  var el=document.getElementById('as-p3');
+  if(!el)return;
+  awardsEnsure();
+  var players=asAllPlayers();
+  if(!players.length){el.innerHTML='<div class="empty">엔트리가 없습니다.</div>';return;}
+  var stats=players.map(function(p){return Object.assign({},p,asGetPlayerStats(p.id));});
+
+  function best(arr,fn,low){return arr.slice().sort(function(a,b){var av=fn(a),bv=fn(b);return low?av-bv:bv-av;})[0];}
+  function fmt2(v){return v!=null?fmt(v):'-';}
+
+  var bAvg=best(stats.filter(function(p){return p.avgTime!=null;}),function(p){return p.avgTime;},true);
+  var bMis=best(stats.filter(function(p){return p.avgMis!=null;}),function(p){return p.avgMis;},true);
+  var bWin=best(stats,function(p){return p.wins;},false);
+  var bCtrib=best(stats,function(p){return p.totalContrib;},false);
+  var bMVP=best(stats,function(p){return p.mvpCount;},false);
+  var bBest=best(stats.filter(function(p){return p.best!=null;}),function(p){return p.best;},true);
+
+  var curMVP=S.awards.allstarMVP;
+  var mvpConf=!!S.allstar.confirmed&&curMVP;
+  var allEntryPlayers=players;
+
+  var mvpOptHTML='<option value="">-- 선수 선택 --</option>';
+  allEntryPlayers.forEach(function(p){mvpOptHTML+='<option value="'+p.id+'"'+(curMVP===p.id?' selected':'')+'>'+p.name+' ('+p.teamName+')</option>';});
+
+  var mvpName=curMVP?(allEntryPlayers.find(function(p){return p.id===curMVP;})||{name:'?',teamName:''}):{};
+
+  var html='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:20px">';
+  html+=awardCard('기록 평균 1위','⏱️',bAvg?bAvg.name+' ('+bAvg.teamName+')':'-',bAvg?fmt2(bAvg.avgTime):'');
+  html+=awardCard('실수 평균 1위','🎯',bMis?bMis.name+' ('+bMis.teamName+')':'-',bMis?bMis.avgMis.toFixed(2)+'회/경기':'');
+  html+=awardCard('다승 1위','🏆',bWin?bWin.name+' ('+bWin.teamName+')':'-',bWin?bWin.wins+'승':'');
+  html+=awardCard('경기 기여도 1위','⚡',bCtrib?bCtrib.name+' ('+bCtrib.teamName+')':'-',bCtrib?bCtrib.totalContrib+'점':'');
+  html+=awardCard('매치 MVP 1위','🌟',bMVP?bMVP.name+' ('+bMVP.teamName+')':'-',bMVP?bMVP.mvpCount+'회':'');
+  html+=awardCard('최고 기록','🚀',bBest?bBest.name+' ('+bBest.teamName+')':'-',bBest?fmt2(bBest.best):'');
+  html+='</div>';
+  // 올스타 MVP
+  html+='<div style="background:var(--sf);border:2px solid var(--gld);border-radius:14px;padding:20px 24px;margin-bottom:16px">';
+  html+='<div style="font-size:14px;font-weight:700;color:var(--gld);margin-bottom:14px">🏅 올스타전 MVP 선정</div>';
+  if(mvpConf){
+    html+='<div style="display:flex;align-items:center;gap:14px">';
+    html+='<div style="font-size:36px">🏅</div>';
+    html+='<div><div style="font-size:20px;font-weight:900;color:var(--gld)">'+mvpName.name+'</div>';
+    html+='<div style="font-size:13px;color:var(--mt)">'+mvpName.teamName+'</div></div>';
+    html+='<div style="margin-left:auto"><button id="as-mvp-unconf" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:7px;padding:7px 14px;font-family:var(--font);font-size:12px;cursor:pointer">선정 해제</button></div>';
+    html+='</div>';
+  } else {
+    html+='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
+    html+='<select id="as-mvp-sel" class="sel" style="flex:1;min-width:200px;font-size:13px;padding:9px 12px">'+mvpOptHTML+'</select>';
+    html+='<button id="as-mvp-conf" style="background:var(--gld);color:#000;border:none;border-radius:8px;padding:9px 20px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">🏅 MVP 확정</button>';
+    html+='</div>';
+  }
+  html+='</div>';
+  el.innerHTML=html;
+  // 이벤트 바인딩
+  var confBtn=document.getElementById('as-mvp-conf');
+  if(confBtn)confBtn.addEventListener('click',function(){
+    var sel=document.getElementById('as-mvp-sel');
+    if(!sel||!sel.value){alert('선수를 선택해주세요.');return;}
+    if(!confirm('MVP를 확정하면 변경할 수 없습니다. 확정하시겠습니까?'))return;
+    S.awards.allstarMVP=sel.value;
+    S.allstar.confirmed=true;
+    saveToCloud();asDrawAwards();
+  });
+  var unconfBtn=document.getElementById('as-mvp-unconf');
+  if(unconfBtn)unconfBtn.addEventListener('click',function(){
+    if(!confirm('MVP 선정을 해제하시겠습니까?'))return;
+    S.awards.allstarMVP='';
+    S.allstar.confirmed=false;
+    saveToCloud();asDrawAwards();
+  });
+}
+
+// ── 올스타 순위표 ──
+function asDrawASRanking(){
+  var el=document.getElementById('as-p4');
+  if(!el)return;
+  var players=asAllPlayers();
+  if(!players.length){el.innerHTML='<div class="empty">엔트리가 없습니다.</div>';return;}
+  var rows=players.map(function(p){return Object.assign({},p,asGetPlayerStats(p.id));});
+  rows.sort(function(a,b){
+    if(b.wins!==a.wins)return b.wins-a.wins;
+    if(b.totalContrib!==a.totalContrib)return b.totalContrib-a.totalContrib;
+    var aT=a.avgTime!=null?a.avgTime:9999,bT=b.avgTime!=null?b.avgTime:9999;
+    if(aT!==bT)return aT-bT;
+    return a.avgMis-b.avgMis;
+  });
+  var rk=1;
+  for(var i=0;i<rows.length;i++){
+    if(i===0){rows[i].rank=1;rows[i].tied=false;continue;}
+    var same=rows[i].wins===rows[i-1].wins&&rows[i].totalContrib===rows[i-1].totalContrib&&rows[i].avgTime===rows[i-1].avgTime&&rows[i].avgMis===rows[i-1].avgMis;
+    if(!same)rk=i+1;
+    rows[i].rank=rk;rows[i].tied=same;if(same)rows[i-1].tied=true;
+  }
+  var html='<div style="overflow-x:auto"><table class="qr-tbl" style="min-width:700px">'
+    +'<thead><tr><th>순위</th><th>선수명</th><th>승</th><th>패</th><th>기록평균</th><th>누적실수</th><th>실수평균</th><th>경기기여도</th><th>최고기록</th><th>MVP</th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    var tot=r.wins+r.losses,wr=tot?(r.wins/tot*100).toFixed(1)+'%':'-';
+    var rkL=(r.tied?'T':'')+r.rank;
+    var rc=r.rank===1?'rk1':r.rank===2?'rk2':r.rank===3?'rk3':'';
+    var cc=r.totalContrib>0?'var(--grn)':r.totalContrib<0?'var(--red)':'var(--mt)';
+    html+='<tr><td><span class="rk '+rc+'">'+rkL+'</span></td>'
+      +'<td><span style="font-weight:600;color:var(--ac)">'+r.name+'</span><span style="font-size:10px;color:var(--mt)"> '+r.teamName+'</span></td>'
+      +'<td class="wc">'+r.wins+'</td><td class="lc">'+r.losses+'</td>'
+      +'<td class="recc">'+(r.avgTime!=null?fmt(r.avgTime):'-')+'</td>'
+      +'<td>'+r.totalMis+'</td><td>'+r.avgMis.toFixed(2)+'</td>'
+      +'<td style="font-weight:700;color:'+cc+'">'+r.totalContrib+'</td>'
+      +'<td class="recc">'+(r.best!=null?fmt(r.best):'-')+'</td>'
+      +'<td style="color:var(--gld);font-weight:700">'+r.mvpCount+'</td>'
+      +'</tr>';
+  });
+  html+='</tbody></table></div>';
+  el.innerHTML=html;
+}
+
+// ── 정규 시즌 시상식 ──
+function renderSeasonAwards(){
+  var el=document.getElementById('qrecord-award');
+  if(!el)return;
+  awardsEnsure();
+  var teams1=S.teams.filter(function(t){return t.div===1;});
+  if(!teams1.length){el.innerHTML='<div class="empty">팀이 없습니다.</div>';return;}
+  var allPlayers=teams1.flatMap(function(t){return t.players.map(function(p){return Object.assign({},p,{teamName:t.name});});});
+  var stats=allPlayers.map(function(p){
+    var ps=getPS(p.id);
+    var cs=getPlayerContribStats(p.id);
+    return Object.assign({},p,ps,{totalContrib:cs.totalContrib,avgContrib:cs.avgContrib,mvpCount:cs.mvpCount});
+  });
+
+  function best(arr,fn,low){if(!arr.length)return null;return arr.reduce(function(a,b){var av=fn(a),bv=fn(b);return low?(av<=bv?a:b):(av>=bv?a:b);});}
+  var active=stats.filter(function(p){return p.wins+p.losses>0;});
+  var bAvg=best(active.filter(function(p){return p.avgTime!=null;}),function(p){return p.avgTime;},true);
+  var bMis=best(active,function(p){return p.avgMis;},true);
+  var bWin=best(active,function(p){return p.wins;},false);
+  var bCtrib=best(active,function(p){return p.totalContrib;},false);
+  var bMVPc=best(active,function(p){return p.mvpCount;},false);
+  var bBest=best(active.filter(function(p){return p.best!=null;}),function(p){return p.best;},true);
+
+  var curMVP=S.awards.seasonMVP;
+  var mvpConf=!!curMVP;
+  var mvpPlayer=curMVP?allPlayers.find(function(p){return p.id===curMVP;}):null;
+
+  var mvpOptHTML='<option value="">-- 선수 선택 --</option>';
+  allPlayers.forEach(function(p){mvpOptHTML+='<option value="'+p.id+'"'+(curMVP===p.id?' selected':'')+'>'+p.name+' ('+p.teamName+')</option>';});
+
+  var html='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:20px">';
+  html+=awardCard('기록 평균 1위','⏱️',bAvg?bAvg.name+' ('+bAvg.teamName+')':'-',bAvg&&bAvg.avgTime!=null?fmt(bAvg.avgTime):'');
+  html+=awardCard('실수 평균 1위','🎯',bMis?bMis.name+' ('+bMis.teamName+')':'-',bMis?bMis.avgMis.toFixed(2)+'회/경기':'');
+  html+=awardCard('다승 1위','🏆',bWin?bWin.name+' ('+bWin.teamName+')':'-',bWin?bWin.wins+'승':'');
+  html+=awardCard('경기 기여도 1위','⚡',bCtrib?bCtrib.name+' ('+bCtrib.teamName+')':'-',bCtrib?bCtrib.totalContrib+'점':'');
+  html+=awardCard('MVP 수상 1위','🌟',bMVPc?bMVPc.name+' ('+bMVPc.teamName+')':'-',bMVPc?bMVPc.mvpCount+'회':'');
+  html+=awardCard('최고 기록','🚀',bBest?bBest.name+' ('+bBest.teamName+')':'-',bBest&&bBest.best!=null?fmt(bBest.best):'');
+  html+='</div>';
+
+  // 시즌 MVP
+  html+='<div style="background:var(--sf);border:2px solid var(--gld);border-radius:14px;padding:20px 24px">';
+  html+='<div style="font-size:14px;font-weight:700;color:var(--gld);margin-bottom:14px">🏅 정규 시즌 MVP 선정</div>';
+  if(mvpConf&&mvpPlayer){
+    html+='<div style="display:flex;align-items:center;gap:14px">';
+    html+='<div style="font-size:36px">🏅</div>';
+    html+='<div><div style="font-size:20px;font-weight:900;color:var(--gld)">'+mvpPlayer.name+'</div>';
+    html+='<div style="font-size:13px;color:var(--mt)">'+mvpPlayer.teamName+'</div></div>';
+    html+='<div style="margin-left:auto"><button id="season-mvp-unconf" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:7px;padding:7px 14px;font-family:var(--font);font-size:12px;cursor:pointer">선정 해제</button></div>';
+    html+='</div>';
+  } else {
+    html+='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
+    html+='<select id="season-mvp-sel" class="sel" style="flex:1;min-width:200px;font-size:13px;padding:9px 12px">'+mvpOptHTML+'</select>';
+    html+='<button id="season-mvp-conf" style="background:var(--gld);color:#000;border:none;border-radius:8px;padding:9px 20px;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer">🏅 MVP 확정</button>';
+    html+='</div>';
+  }
+  html+='</div>';
+  el.innerHTML=html;
+
+  var cb=document.getElementById('season-mvp-conf');
+  if(cb)cb.addEventListener('click',function(){
+    var sel=document.getElementById('season-mvp-sel');
+    if(!sel||!sel.value){alert('선수를 선택해주세요.');return;}
+    if(!confirm('시즌 MVP를 확정하면 변경할 수 없습니다. 확정하시겠습니까?'))return;
+    S.awards.seasonMVP=sel.value;saveToCloud();renderSeasonAwards();
+  });
+  var ub=document.getElementById('season-mvp-unconf');
+  if(ub)ub.addEventListener('click',function(){
+    if(!confirm('시즌 MVP 선정을 해제하시겠습니까?'))return;
+    S.awards.seasonMVP='';saveToCloud();renderSeasonAwards();
+  });
 }
 function renderAdmin(){
   document.getElementById('admin-list').innerHTML=S.teams.filter(t=>t.div===1).map(t=>{
