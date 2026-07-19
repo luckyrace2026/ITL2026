@@ -4189,8 +4189,10 @@ function asMakeFake(side){
   asEnsure();
   var entry=side==='i'?S.allstar.iEntry:S.allstar.tEntry;
   var name=side==='i'?'I-올스타':'T-올스타';
-  var players=entry.slice(0,4).map(function(pid,i){
-    var p=S.teams.flatMap(function(t){return t.players;}).find(function(x){return x.id===pid;});
+  var allP=S.teams.flatMap(function(t){return t.players.map(function(p){return Object.assign({},p,{teamName:t.name});});});
+  // 엔트리 8명 전체를 players에 포함 (buildRF 드롭다운에서 선택 가능)
+  var players=entry.map(function(pid,i){
+    var p=allP.find(function(x){return x.id===pid;});
     var t=S.teams.find(function(t){return t.players.some(function(x){return x.id===pid;});});
     return{id:pid,num:i+1,name:(p?p.name:'?')+(t?' ('+t.name+')':'')};
   });
