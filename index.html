@@ -4091,31 +4091,62 @@ function calcRoleStats(pid) {
       const hp = getRoundPlayer(h,rnd,'home',ri);
       const ap = getRoundPlayer(a,rnd,'away',ri);
       const amHome = hp?.id===pid, amAway = ap?.id===pid;
+      const rw = roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
+
       if (!amHome&&!amAway) {
-        const rw = roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
         if(rw==='home')hScore++;else if(rw==='away')aScore++;
         continue;
       }
+
       const myScore = amHome?hScore:aScore;
       const opScore = amHome?aScore:hScore;
-      const rw = roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
       const iWon = (amHome&&rw==='home')||(amAway&&rw==='away');
       const roundNo = ri+1; // 1-based
 
       if (iWon) {
-        // 스타터: 0:0 에서 1라운드 승리
-        if (myScore===0&&opScore===0&&roundNo===1) stats.starter++;
-        // 체이저: 0:1 또는 0:2 에서 2R 또는 3R 승리
-        if ((myScore===0&&opScore===1||myScore===0&&opScore===2)&&(roundNo===2||roundNo===3)) stats.chaser++;
-        // 릴리프: 1:0 또는 1:1 에서 2R 또는 3R 승리
-        if ((myScore===1&&opScore===0||myScore===1&&opScore===1)&&(roundNo===2||roundNo===3)) stats.relief++;
-        // 클로저: 2:0 또는 2:1 에서 3R 또는 4R 승리
-        if ((myScore===2&&opScore===0||myScore===2&&opScore===1)&&(roundNo===3||roundNo===4)) stats.closer++;
+        // ── 우선순위에 따라 역할 하나만 부여 ──
+        // 우선순위: 클로저/오프너 > 스타터 > 릴리프 > 체이저 > 퍼펙터
+
+        let role = null;
+
+        // 클로저: 팀이 2점 리드(my:2, op:0 또는 2:1)에서 3R·4R 승리
+        //   + 무승부로 인해 실질 2:0 상황: my=2, op=0이지만 라운드가 3·4인 경우 포함
+        //   + 1R 또는 2R 무승부로 인해 1:0 리드인 상황(my=1,op=0)에서 3R 승리:
+        //     이때 무승부가 있었다면 = 실제 진행 라운드 수가 ri+1이고 my=1,op=0
+        //     → 기존 2:1이나 2:0 조건 외에, 1:0 상황에서 3R 승리도 클로저
+        if (!role) {
+          if ((myScore===2&&opScore===0||myScore===2&&opScore===1)&&(roundNo===3||roundNo===4)) role='closer';
+          // 무승부 포함: 1:0 상황에서 3R 승리 → 앞선 라운드에 무승부 있어서 1:0이 된 경우
+          // 3라운드(ri===2)에서 my=1, op=0이면 앞선 2라운드 중 하나가 무승부였을 가능성
+          // 정확한 판단: ri===2이고 my=1,op=0이면 총 3라운드 중 2번 진행에 1승 = 무승부 있음
+          if (!role && roundNo===3 && myScore===1 && opScore===0) role='closer';
+          // 1:0 상황(무승부 포함)에서 4R 승리 → 2:0이 실질적으로 클로저
+          if (!role && roundNo===4 && myScore===1 && opScore===0) role='closer';
+        }
+
         // 오프너: 1:2 에서 4라운드 승리
-        if (myScore===1&&opScore===2&&roundNo===4) stats.opener++;
+        if (!role && myScore===1&&opScore===2&&roundNo===4) role='opener';
+
+        // 스타터: 0:0 에서 1라운드 승리
+        //   + 무승부로 0:0인 상황에서 2라운드 승리
+        if (!role) {
+          if (myScore===0&&opScore===0&&roundNo===1) role='starter';
+          // 1R 무승부 → 0:0 상태에서 2R 승리
+          if (!role && myScore===0&&opScore===0&&roundNo===2) role='starter';
+        }
+
+        // 릴리프: 1:0 또는 1:1 에서 2R 또는 3R 승리
+        if (!role && (myScore===1&&opScore===0||myScore===1&&opScore===1)&&(roundNo===2||roundNo===3)) role='relief';
+
+        // 체이저: 0:1 또는 0:2 에서 2R 또는 3R 승리
+        if (!role && (myScore===0&&opScore===1||myScore===0&&opScore===2)&&(roundNo===2||roundNo===3)) role='chaser';
+
         // 퍼펙터: 3:0 에서 4라운드 승리
-        if (myScore===3&&opScore===0&&roundNo===4) stats.perfecter++;
+        if (!role && myScore===3&&opScore===0&&roundNo===4) role='perfecter';
+
+        if (role) stats[role]++;
       }
+
       // 점수 업데이트
       if(rw==='home')hScore++;else if(rw==='away')aScore++;
     }
