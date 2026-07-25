@@ -2573,11 +2573,12 @@ function openPlayerModal(pid){
 
   // ── 최근 10경기 ──
   const recent=calcRecentN(pid,10);
+  const drawTxt=recent.draws>0?` ${recent.draws}무`:'';
   const recentHTML=`<div style="margin-bottom:20px">
-    <div style="font-size:12px;font-weight:700;color:var(--mt);letter-spacing:.5px;margin-bottom:8px">최근 ${recent.total}경기 (${recent.wins}승 ${recent.losses}패)</div>
+    <div style="font-size:12px;font-weight:700;color:var(--mt);letter-spacing:.5px;margin-bottom:8px">최근 ${recent.total}경기 (${recent.wins}승${drawTxt} ${recent.losses}패)</div>
     <div style="display:flex;gap:4px;flex-wrap:wrap">
-      ${recent.seq.map(r=>{
-      const isDraw=!r.won&&r.draw;
+      ${[...recent.seq].reverse().map(r=>{
+      const isDraw=r.draw;
       const bg=r.won?'rgba(0,229,160,.15)':isDraw?'rgba(107,140,174,.15)':'rgba(255,77,109,.15)';
       const col=r.won?'var(--grn)':isDraw?'var(--mt)':'var(--red)';
       const border=r.won?'rgba(0,229,160,.3)':isDraw?'rgba(107,140,174,.3)':'rgba(255,77,109,.3)';
@@ -2612,7 +2613,7 @@ function getPlayerRoundSeq(pid){
       const rw=roundWinner(rnd.homeSec,rnd.awaySec,rnd.homeMis,rnd.awayMis);
       const won=(amH&&rw==='home')||(amA&&rw==='away');
       const draw=rw==='draw';
-      if(!draw)seq.push({matchNo:m.no,round:ri+1,isFinal:false,won,draw:false});
+      seq.push({matchNo:m.no,round:ri+1,isFinal:false,won,draw});
     }
     // 에이스 결정전
     if(m.result.final){
@@ -2624,7 +2625,7 @@ function getPlayerRoundSeq(pid){
         const fw=roundWinner(fn.homeSec,fn.awaySec,fn.homeMis,fn.awayMis);
         const won=(amH&&fw==='home')||(amA&&fw==='away');
         const draw=fw==='draw';
-        if(!draw)seq.push({matchNo:m.no,round:'F',isFinal:true,won,draw:false});
+        seq.push({matchNo:m.no,round:'F',isFinal:true,won,draw:false});
       }
     }
   }
@@ -2646,8 +2647,9 @@ function calcRecentN(pid,n=10){
   const seq=getPlayerRoundSeq(pid);
   const recent=seq.slice(-n);
   const wins=recent.filter(r=>r.won).length;
-  const losses=recent.filter(r=>!r.won).length;
-  return{seq:recent,wins,losses,total:recent.length};
+  const draws=recent.filter(r=>r.draw).length;
+  const losses=recent.filter(r=>!r.won&&!r.draw).length;
+  return{seq:recent,wins,draws,losses,total:recent.length};
 }
 
 // DATA EXPORT / IMPORT
